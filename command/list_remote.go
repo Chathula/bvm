@@ -22,16 +22,16 @@ type node struct {
 	NodeId string `json:"node_id"`
 }
 
-// ListRemote TODO: improve code to get all the version instead of initial 30 records
+//  TODO: improve code to get all the version instead of initial 30 records
 func ListRemote() error {
 
 	response, err := http.Get(config.BUN_RELEASE_UPDATED_GITHUB_API_URL + "/tags")
 
-	defer response.Body.Close()
-
 	if err != nil {
 		return fmt.Errorf("request failed on url: `%s` ", config.BUN_RELEASE_UPDATED_GITHUB_API_URL)
 	}
+
+	defer response.Body.Close()
 
 	if response.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("request failed withh response code:  %d", response.StatusCode)
