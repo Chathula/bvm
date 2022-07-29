@@ -1,8 +1,8 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/chathula/bvm/command"
@@ -33,11 +33,15 @@ func main() {
 			},
 		},
 		{
-			Name:  "install",
-			Usage: "Install given bun version",
+			Name:      "install",
+			Usage:     "Install given bun version",
+			ArgsUsage: "<version>",
+			Aliases:   []string{"i"},
 			Action: func(c *cli.Context) error {
-				fmt.Println("install command")
-				return nil
+				if c.Args().Len() == 0 {
+					return errors.New(fmt.Sprintf("require argument <%s>", color.YellowString("version")))
+				}
+				return command.Install(c.Args().First())
 			},
 		},
 	}
@@ -59,6 +63,6 @@ func main() {
 `
 
 	if err := cliApp.Run(os.Args); err != nil {
-		log.Fatal(err)
+		fmt.Println(err.Error())
 	}
 }
