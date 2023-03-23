@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/chathula/bvm/config"
@@ -55,4 +59,116 @@ func GetRemoteVersions() ([]string, error) {
 	}
 
 	return versions, nil
+}
+
+func ValidVersion(version string) error {
+	versions, err := GetRemoteVersions()
+
+	if err != nil {
+		return err
+	}
+
+	for _, v := range versions {
+		if strings.EqualFold(v, version) {
+			return nil
+		}
+
+	}
+
+	return fmt.Errorf("version %s not found", version)
+}
+
+func UseVersion(version string) error {
+	err := ValidVersion(version)
+	if err != nil {
+		return err
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	bunPath := filepath.Join(homeDir, ".bun", "bin", "bun")
+	if _, err := os.Stat(bunPath); err == nil {
+		err = os.Remove(bunPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	bunSourcePath := filepath.Join(homeDir, ".bvm", version, "bun")
+
+	err = os.MkdirAll(filepath.Join(homeDir, ".bun", "bin"), os.ModePerm)
+	if err != nil {
+		return err
+	}
+
+	err = os.Symlink(bunSourcePath, bunPath)
+	if err != nil {
+		return err
+	}
+
+	SetPathVariable()
+
+	return nil
+}
+
+// TODO: work on proper $PATH env variable update
+func SetPathVariable() error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
+	bunPath := filepath.Join(homeDir, ".bun", "bin")
+	paths := os.Getenv("PATH")
+
+	if strings.Contains(paths, bunPath) {
+		return nil
+	}
+
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		zshFilePath, err := exec.LookPath("zsh")
+		bashFilePath, err := exec.LookPath("bash")
+		// fishFilePath, err := exec.LookPath("fish")
+		if err != nil {
+			return err
+		}
+
+		if zshFilePath != "" {
+			zshrcPath := filepath.Join(homeDir, ".zshrc")
+			file, err := os.OpenFile(zshrcPath, os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			_, err = file.WriteString("\nexport PATH=\"$PATH:" + bunPath + "\"\n")
+			if err != nil {
+				return err
+			}
+
+			exec.Command("exec", "zsh").Run()
+		}
+
+		if bashFilePath != "" {
+			zshrcPath := filepath.Join(homeDir, ".bashrc")
+			file, err := os.OpenFile(zshrcPath, os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			_, err = file.WriteString("\nexport PATH=\"$PATH:" + bunPath + "\"\n")
+			if err != nil {
+				return err
+			}
+
+			exec.Command("source", "~/.bashrc").Run()
+		}
+
+	}
+
+	return nil
 }
