@@ -180,21 +180,13 @@ func Install(version string) error {
 		return errors.New(color.RedString(err.Error()))
 	}
 
-	useVersionErr := util.UseVersion(version)
+	useVersionErr := util.UseVersion(downloadVersion)
 
 	if useVersionErr != nil {
 		return errors.New(color.RedString(err.Error()))
 	}
 
-	fmt.Println(color.GreenString("Successfully installed bun version: v%s", version))
-
-	// fmt.Printf(dstFilepath)
-
-	// update shell config to have bun command, if there is no version is currently in use
-
-	// detect shell type and update shell config to have bun command, if there is no version is currently in use
-
-	// print success message
+	fmt.Println(color.GreenString("Successfully installed bun version: %s", downloadVersion))
 
 	return nil
 }

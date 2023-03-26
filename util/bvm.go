@@ -69,7 +69,7 @@ func ValidVersion(version string) error {
 	}
 
 	for _, v := range versions {
-		if strings.EqualFold(v, version) {
+		if strings.EqualFold(v, version) || strings.EqualFold(v, fmt.Sprintf("v%s", version)) {
 			return nil
 		}
 
@@ -109,12 +109,10 @@ func UseVersion(version string) error {
 		return err
 	}
 
-	SetPathVariable()
-
 	return nil
 }
 
-// TODO: work on proper $PATH env variable update
+// TODO: Convert this to use the "doctor“ command
 func SetPathVariable() error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -129,10 +127,10 @@ func SetPathVariable() error {
 	}
 
 	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
-		zshFilePath, err := exec.LookPath("zsh")
-		bashFilePath, err := exec.LookPath("bash")
-		// fishFilePath, err := exec.LookPath("fish")
-		if err != nil {
+		zshFilePath, zshErr := exec.LookPath("zsh")
+		bashFilePath, bashErr := exec.LookPath("bash")
+		fishFilePath, fishErr := exec.LookPath("fish")
+		if zshErr != nil || bashErr != nil || fishErr != nil {
 			return err
 		}
 
@@ -148,13 +146,11 @@ func SetPathVariable() error {
 			if err != nil {
 				return err
 			}
-
-			exec.Command("exec", "zsh").Run()
 		}
 
 		if bashFilePath != "" {
-			zshrcPath := filepath.Join(homeDir, ".bashrc")
-			file, err := os.OpenFile(zshrcPath, os.O_APPEND|os.O_WRONLY, 0644)
+			bashrcPath := filepath.Join(homeDir, ".bashrc")
+			file, err := os.OpenFile(bashrcPath, os.O_APPEND|os.O_WRONLY, 0644)
 			if err != nil {
 				return err
 			}
@@ -164,8 +160,21 @@ func SetPathVariable() error {
 			if err != nil {
 				return err
 			}
+		}
 
-			exec.Command("source", "~/.bashrc").Run()
+		if fishFilePath != "" {
+			fishPath := filepath.Join(homeDir, ".config", "fish", "config.fish")
+			file, err := os.OpenFile(fishPath, os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+
+			_, err = file.WriteString("\nexport PATH=\"$PATH:" + bunPath + "\"\n")
+			file.WriteString("\nset --export PATH " + bunPath + " $PATH\n")
+			if err != nil {
+				return err
+			}
 		}
 
 	}
