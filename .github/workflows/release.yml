@@ -5,9 +5,6 @@ on:
     # run only against tags version tags
     tags:
       - 'v*'
-    branches:
-      - master
-      - main
 
 permissions:
   contents: write
@@ -22,7 +19,7 @@ jobs:
       - run: git fetch --force --tags
       - uses: actions/setup-go@v4
         with:
-          go-version: latest
+          go-version: stable
 
       - uses: goreleaser/goreleaser-action@v4
         with:
