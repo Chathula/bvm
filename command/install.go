@@ -25,11 +25,11 @@ func Install(version string) error {
 	// if windows or any other unsupported OS print an error
 
 	var (
-		systemOS        string
-		arch            string
-		downloadVersion string
-		bvmRoot         string
-		bvmVersionsRoot string
+		systemOS          string
+		arch              string
+		downloadVersion   string
+		BVM_ROOT          string
+		BVM_VERSIONS_ROOT string
 	)
 
 	// unzip the source and move to ~/.bvm folder with subdirectory with vx.x.x name
@@ -39,8 +39,8 @@ func Install(version string) error {
 		return errors.New(color.RedString(err.Error()))
 	}
 
-	bvmRoot = filepath.Join(homeDir, ".bvm")
-	bvmVersionsRoot = filepath.Join(bvmRoot, "versions")
+	BVM_ROOT = filepath.Join(homeDir, ".bvm")
+	BVM_VERSIONS_ROOT = filepath.Join(BVM_ROOT, "versions")
 
 	switch runtime.GOOS {
 	case "windows":
@@ -123,7 +123,7 @@ func Install(version string) error {
 		return errors.New(color.RedString(err.Error()))
 	}
 
-	bvmDownloadRoot := filepath.Join(bvmVersionsRoot, downloadVersion)
+	bvmDownloadRoot := filepath.Join(BVM_VERSIONS_ROOT, downloadVersion)
 
 	os.MkdirAll(bvmDownloadRoot, os.ModePerm)
 
