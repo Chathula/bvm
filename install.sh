@@ -51,6 +51,7 @@ case $SHELL in
 esac
 
 if [ ! $BVM_DIR ];then
+    echo -e '\n# bvm & bun'
     command echo "export BVM_DIR=\"$bvm_dir\"" >> "$HOME/$shell_profile"
     command echo "export PATH=\"\$BVM_DIR/bin:\$PATH\"" >> "$HOME/$shell_profile"
 fi
