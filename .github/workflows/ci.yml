@@ -45,3 +45,6 @@ jobs:
       # against the real Bun release infrastructure on every OS.
       - name: E2E tests
         run: go test -tags=e2e ./e2e -v
+        env:
+          # Lifts the anonymous api.github.com rate limit on shared runners.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

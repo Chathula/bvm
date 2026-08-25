@@ -128,3 +128,45 @@ func TestResolveTargetExplicit(t *testing.T) {
 		t.Fatal("ResolveTarget(unknown version) expected error")
 	}
 }
+
+func TestAPIGetSendsTokenWhenPresent(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "secret-token")
+	t.Setenv("GH_TOKEN", "")
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, "[]")
+	}))
+	defer srv.Close()
+
+	resp, err := APIGet(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if gotAuth != "Bearer secret-token" {
+		t.Fatalf("Authorization = %q, want Bearer secret-token", gotAuth)
+	}
+}
+
+func TestAPIGetAnonymousWithoutToken(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, "[]")
+	}))
+	defer srv.Close()
+
+	resp, err := APIGet(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if gotAuth != "" {
+		t.Fatalf("Authorization = %q, want empty", gotAuth)
+	}
+}

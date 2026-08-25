@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	semver "github.com/Masterminds/semver/v3"
 
@@ -16,6 +18,26 @@ import (
 // releasesAPIURL is a var so tests can point it at a mock server.
 var releasesAPIURL = config.BunReleasesAPIURL
 
+// apiClient bounds how long API calls may hang; release archive downloads
+// use a separate unbounded path since they transfer large files.
+var apiClient = &http.Client{Timeout: 15 * time.Second}
+
+// APIGet performs an authenticated GET when GITHUB_TOKEN/GH_TOKEN is set,
+// which lifts the 60 req/hour anonymous limit on api.github.com — required
+// on shared CI runners where that quota is routinely exhausted.
+func APIGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	} else if token := os.Getenv("GH_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return apiClient.Do(req)
+}
+
 type gitTag struct {
 	Name string `json:"name"`
 }
@@ -23,12 +45,11 @@ type gitTag struct {
 // RemoteVersions returns every published Bun version ordered oldest→newest,
 // in canonical form "vX.Y.Z". Follows API pagination.
 func RemoteVersions() ([]string, error) {
-	client := &http.Client{}
 	var versions []string // collected newest-first, matching the API order
 
 	for page := 1; ; page++ {
 		url := fmt.Sprintf("%s/tags?per_page=100&page=%d", releasesAPIURL, page)
-		resp, err := client.Get(url)
+		resp, err := APIGet(url)
 		if err != nil {
 			return nil, fmt.Errorf("request failed on %s: %w", url, err)
 		}

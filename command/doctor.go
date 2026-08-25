@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"time"
 
 	"github.com/chathula/bvm/config"
 	"github.com/chathula/bvm/util"
@@ -77,8 +76,7 @@ func Doctor() error {
 	}
 	checks = append(checks, check{name: "~/.bun/bin on PATH", ok: onPath, detail: hint})
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(config.BunReleasesAPIURL + "/tags?per_page=1")
+	resp, err := util.APIGet(config.BunReleasesAPIURL + "/tags?per_page=1")
 	apiOK := err == nil && resp.StatusCode == http.StatusOK
 	if resp != nil {
 		resp.Body.Close()
