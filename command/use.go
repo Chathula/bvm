@@ -7,9 +7,14 @@ import (
 	"github.com/fatih/color"
 )
 
-// Use activates a locally installed Bun version ("latest" resolves to the
-// highest installed version).
+// Use activates a locally installed Bun version. The version may be given
+// explicitly, be "latest" (highest installed), or come from a .bvmrc file.
 func Use(arg string) error {
+	arg, err := resolveVersionArg(arg)
+	if err != nil {
+		return err
+	}
+
 	version, err := resolveLocal(arg)
 	if err != nil {
 		return fail("%v", err)

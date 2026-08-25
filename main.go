@@ -25,24 +25,18 @@ func main() {
 	cliApp.Commands = []*cli.Command{
 		{
 			Name:      "install",
-			Usage:     "Install given bun version",
-			ArgsUsage: "<version>",
+			Usage:     "Install given bun version (defaults to .bvmrc)",
+			ArgsUsage: "[version]",
 			Aliases:   []string{"i"},
 			Action: func(c *cli.Context) error {
-				if !c.Args().Present() {
-					return fmt.Errorf("require argument <%s>", color.YellowString("version"))
-				}
 				return command.Install(c.Args().First())
 			},
 		},
 		{
 			Name:      "use",
-			Usage:     "Activate an installed bun version ('latest' = highest installed)",
-			ArgsUsage: "<version>",
+			Usage:     "Activate an installed bun version ('latest' = highest installed; defaults to .bvmrc)",
+			ArgsUsage: "[version]",
 			Action: func(c *cli.Context) error {
-				if !c.Args().Present() {
-					return fmt.Errorf("require argument <%s>", color.YellowString("version"))
-				}
 				return command.Use(c.Args().First())
 			},
 		},
@@ -96,7 +90,9 @@ func main() {
 ` + color.YellowString("EXAMPLES:") + `
 	{{.Name}} install latest
 	{{.Name}} install 1.1.0
+	{{.Name}} install        # installs the version from .bvmrc
 	{{.Name}} use 1.1.0
+	{{.Name}} use            # uses the version from .bvmrc
 	{{.Name}} ls
 	{{.Name}} ls-remote
 	{{.Name}} uninstall 1.1.0

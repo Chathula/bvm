@@ -20,10 +20,10 @@ jobs:
           go-version-file: go.mod
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: latest
+          version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,7 +43,10 @@ jobs:
         run: curl -fsSL https://raw.githubusercontent.com/chathula/bvm/${{ github.ref_name }}/install.sh | bash
 
       - name: Verify bvm runs
-        run: "$HOME/.bvm/bin/bvm --version | grep -q \"${{ github.ref_name }}\""
+        run: |
+          # Goreleaser injects the tag WITHOUT its 'v' prefix.
+          expected="${GITHUB_REF_NAME#v}"
+          "$HOME/.bvm/bin/bvm" --version | grep -q "$expected"
 
   smoke-windows:
     name: Smoke install (windows)
@@ -58,4 +61,11 @@ jobs:
 
       - name: Verify bvm runs
         shell: pwsh
-        run: (Join-Path $env:USERPROFILE ".bvm/bin/bvm.exe") --version | Out-String | ForEach-Object { if ($_ -notmatch [regex]::Escape("${{ github.ref_name }}")) { exit 1 } }
+        run: |
+          # '&' call operator is required to execute a command built from an
+          # expression; goreleaser injects the tag WITHOUT its 'v' prefix.
+          $exe = Join-Path $env:USERPROFILE ".bvm\bin\bvm.exe"
+          $expected = $env:GITHUB_REF_NAME.TrimStart("v")
+          $out = (& $exe --version) | Out-String
+          Write-Host $out
+          if ($out -notmatch [regex]::Escape($expected)) { exit 1 }

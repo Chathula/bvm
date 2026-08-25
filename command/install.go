@@ -12,8 +12,14 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-// Install downloads a Bun version ("latest" allowed) and activates it.
+// Install downloads a Bun version and activates it. The version may be given
+// explicitly ("latest" allowed) or via a .bvmrc file in the current directory.
 func Install(arg string) error {
+	arg, err := resolveVersionArg(arg)
+	if err != nil {
+		return err
+	}
+
 	platform, err := util.DetectPlatform()
 	if err != nil {
 		return fail("Platform not supported: %v", err)

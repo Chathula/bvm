@@ -129,6 +129,38 @@ func TestResolveTargetExplicit(t *testing.T) {
 	}
 }
 
+func TestRemoteVersionsIgnoresNonReleaseTags(t *testing.T) {
+	// Newest-first fixture mixing stable releases with channels the Bun
+	// repo may publish (canaries, prereleases, junk).
+	setReleasesAPIURL(t, mockTagsAPI(t, []string{
+		"bun-canary-v9.9.9",
+		"bun-v2.0.0-beta.1",
+		"bun-v1.4.0",
+		"weird-tag",
+		"bun-v1.3.14",
+	}).URL)
+
+	versions, err := RemoteVersions()
+	if err != nil {
+		t.Fatalf("RemoteVersions() error = %v", err)
+	}
+	want := []string{"v1.3.14", "v1.4.0"}
+	if len(versions) != len(want) {
+		t.Fatalf("got %v, want %v", versions, want)
+	}
+	for i := range want {
+		if versions[i] != want[i] {
+			t.Fatalf("versions[%d] = %q, want %q", i, versions[i], want[i])
+		}
+	}
+
+	// "latest" must resolve to a real stable release.
+	got, err := ResolveTarget("latest")
+	if err != nil || got != "v1.4.0" {
+		t.Fatalf("ResolveTarget(latest) = (%q, %v), want v1.4.0", got, err)
+	}
+}
+
 func TestAPIGetSendsTokenWhenPresent(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "secret-token")
 	t.Setenv("GH_TOKEN", "")

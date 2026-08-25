@@ -32,8 +32,8 @@ Restart your shell afterwards so the updated `PATH` is picked up.
 ## Usage
 
 ```text
-bvm install <version>   Install a bun version ('latest' allowed)
-bvm use <version>       Activate an installed version
+bvm install [version]   Install a bun version ('latest' allowed; defaults to .bvmrc)
+bvm use [version]       Activate an installed version ('latest' = highest; defaults to .bvmrc)
 bvm list                List installed versions
 bvm list-remote         List all remote versions
 bvm uninstall <version> Remove an installed version
@@ -52,6 +52,31 @@ bvm doctor             # verify PATH, active version, API reachability
 
 > Windows note: Bun ships native Windows builds starting at **v1.1.0**;
 > older versions cannot be installed on Windows.
+
+## Project configuration (`.bvmrc`)
+
+Like `.nvmrc` for nvm, pin the Bun version your project needs by committing a
+`.bvmrc` file to its root:
+
+```text
+# .bvmrc — first non-comment line wins
+1.4.0
+```
+
+Then anyone can bootstrap the project without typing a version:
+
+```sh
+bvm install   # reads 1.4.0 from .bvmrc, downloads and activates it
+bvm use       # activates 1.4.0 (must already be installed)
+bvm use latest  # explicit args always win over .bvmrc
+```
+
+Rules:
+
+- `.bvmrc` is looked up in the **current working directory**
+- Blank lines and `#` comments are ignored; the first version line is used
+- `latest` inside `.bvmrc` works for `bvm install`
+- An explicit CLI argument always takes precedence over `.bvmrc`
 
 ## How it works
 

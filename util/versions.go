@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -42,6 +43,11 @@ type gitTag struct {
 	Name string `json:"name"`
 }
 
+// stableTagRe matches only plain release tags ("bun-v1.4.0"). The upstream
+// repo may carry other channels (canary, betas) which have no standard
+// release assets and must never resolve as "latest".
+var stableTagRe = regexp.MustCompile(`^bun-v\d+\.\d+\.\d+$`)
+
 // RemoteVersions returns every published Bun version ordered oldest→newest,
 // in canonical form "vX.Y.Z". Follows API pagination.
 func RemoteVersions() ([]string, error) {
@@ -71,7 +77,10 @@ func RemoteVersions() ([]string, error) {
 		}
 
 		for _, tag := range tags {
-			name := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(tag.Name, "bun-")))
+			if !stableTagRe.MatchString(tag.Name) {
+				continue
+			}
+			name := strings.ToLower(strings.TrimPrefix(tag.Name, "bun-"))
 			if name != "" {
 				versions = append(versions, name)
 			}

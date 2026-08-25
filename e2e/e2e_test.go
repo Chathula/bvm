@@ -51,7 +51,16 @@ func TestMain(m *testing.M) {
 // run executes bvm in an isolated environment and returns (stdout+stderr, error).
 func run(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	return runIn(t, "", args...)
+}
+
+// runIn is run with an explicit working directory for the bvm process.
+func runIn(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
 	cmd := exec.Command(bvmBin, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
 	cmd.Env = append(os.Environ(),
 		"BVM_DIR="+bvmRoot,
 		"HOME="+homeDir,
@@ -189,6 +198,21 @@ func TestE2EFlow(t *testing.T) {
 		if !utilIsInstalled(t, pinnedVersion) {
 			t.Fatal("active version was removed despite guard")
 		}
+	})
+
+	t.Run("UseReadsDotBvmrc", func(t *testing.T) {
+		project := filepath.Join(homeDir, "project")
+		os.MkdirAll(project, 0o755)
+		os.WriteFile(filepath.Join(project, ".bvmrc"), []byte(pinnedVersion+"\n"), 0o644)
+
+		out, err := runIn(t, project, "use")
+		requireSuccess(t, out, err, "bvm use with .bvmrc")
+		if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
+			t.Fatalf("after 'bvm use' via .bvmrc, bun --version = %q, want %q", got, strings.TrimPrefix(pinnedVersion, "v"))
+		}
+
+		out, err = runIn(t, project, "install")
+		requireSuccess(t, out, err, "bvm install with .bvmrc (already installed)")
 	})
 
 	t.Run("InvalidVersionsFailCleanly", func(t *testing.T) {
