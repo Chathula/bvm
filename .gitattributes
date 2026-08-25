@@ -1,0 +1,3 @@
+# Normalize line endings so gofmt passes on Windows CI (runners default to
+# CRLF checkouts, which gofmt rejects).
+* text=auto eol=lf
