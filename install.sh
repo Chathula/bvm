@@ -8,16 +8,17 @@ if ! command -v unzip >/dev/null; then
 fi
 
 if [ "$OS" = "Windows_NT" ]; then
-  echo "Error: bun requires Windows Subsystem for Linux." 1>&2
+	echo "Error: use install.ps1 on Windows (or WSL with the bash installer)." 1>&2
 	exit 1
-else
-	case $(uname -sm) in
-	"Darwin x86_64") target="darwin_x86_64" ;;
-	"Darwin arm64") target="darwin_arm64" ;;
-	"Linux x86_64") target="linux_x86_64" ;;
-	*) echo "Unsupported OS + CPU combination: $(uname -sm)"; exit 1 ;;
-	esac
 fi
+
+case $(uname -sm) in
+"Darwin x86_64") target="darwin_x86_64" ;;
+"Darwin arm64") target="darwin_arm64" ;;
+"Linux x86_64") target="linux_x86_64" ;;
+"Linux aarch64") target="linux_aarch64" ;;
+*) echo "Unsupported OS + CPU combination: $(uname -sm)" 1>&2; exit 1 ;;
+esac
 
 bvm_url="https://github.com/chathula/bvm/releases/latest/download/bvm_${target}.zip"
 
@@ -25,14 +26,11 @@ bvm_dir="${BVM_DIR:-$HOME/.bvm}"
 bvm_bin_dir="$bvm_dir/bin"
 exe="$bvm_bin_dir/bvm"
 
-if [ ! -d "$bvm_bin_dir" ]; then
-	mkdir -p "$bvm_bin_dir"
-fi
+mkdir -p "$bvm_bin_dir"
 
 if [ "$1" = "" ]; then
-	cd "$bvm_bin_dir"
-	curl --fail --location --progress-bar -k --output "$exe.zip" "$bvm_url"
-	unzip -o "$exe.zip"
+	curl --fail --location --progress-bar -o "$exe.zip" "$bvm_url"
+	unzip -o "$exe.zip" -d "$bvm_bin_dir"
 	rm "$exe.zip"
 else
 	echo "Install path override detected: $1"
@@ -42,18 +40,32 @@ else
 	fi
 	cp "$1" "$exe"
 fi
-cd "$bvm_bin_dir"
+
 chmod +x "$exe"
 
 case $SHELL in
-/bin/zsh) shell_profile=".zshrc" ;;
-*) shell_profile=".basrc" ;;
+*/zsh) shell_profile=".zshrc" ;;
+*/fish) shell_profile=".config/fish/config.fish" ;;
+*) shell_profile=".bashrc" ;;
 esac
 
-if [ ! $BVM_DIR ];then
-    echo -e '\n# bvm & bun'
-    command echo "export BVM_DIR=\"$bvm_dir\"" >> "$HOME/$shell_profile"
-    command echo "export PATH=\"\$BVM_DIR/bin:\$PATH\"" >> "$HOME/$shell_profile"
+if [ ! $BVM_DIR ]; then
+	case $shell_profile in
+	.config/fish/config.fish)
+		{
+			echo -e '\n# bvm & bun'
+			command echo "set --export BVM_DIR \"$bvm_dir\""
+			command echo "fish_add_path \"\$BVM_DIR/bin\""
+		} >>"$HOME/$shell_profile"
+		;;
+	*)
+		{
+			echo -e '\n# bvm & bun'
+			command echo "export BVM_DIR=\"$bvm_dir\""
+			command echo "export PATH=\"\$BVM_DIR/bin:\$PATH\""
+		} >>"$HOME/$shell_profile"
+		;;
+	esac
 fi
 
 echo "bvm was installed successfully to $exe"

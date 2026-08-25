@@ -4,20 +4,21 @@ import (
 	"fmt"
 
 	"github.com/chathula/bvm/util"
+	"github.com/fatih/color"
 )
 
-//  TODO: improve code to get all the version instead of initial 30 records
+// ListRemote prints all remote Bun versions, marking the newest as latest.
 func ListRemote() error {
-
-	versions, err := util.GetRemoteVersions()
-
+	versions, err := util.RemoteVersions()
 	if err != nil {
-		return err
+		return fail("%v", err)
 	}
-
-	for _, version := range versions {
-		fmt.Println(version)
+	for i, version := range versions {
+		if i == len(versions)-1 {
+			fmt.Printf("%s %s\n", version, color.GreenString("(latest)"))
+		} else {
+			fmt.Println(version)
+		}
 	}
-
 	return nil
 }
