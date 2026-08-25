@@ -203,15 +203,19 @@ func TestE2EFlow(t *testing.T) {
 	t.Run("UseReadsDotBvmrc", func(t *testing.T) {
 		project := filepath.Join(homeDir, "project")
 		os.MkdirAll(project, 0o755)
-		os.WriteFile(filepath.Join(project, ".bvmrc"), []byte(pinnedVersion+"\n"), 0o644)
 
-		out, err := runIn(t, project, "use")
-		requireSuccess(t, out, err, "bvm use with .bvmrc")
-		if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
-			t.Fatalf("after 'bvm use' via .bvmrc, bun --version = %q, want %q", got, strings.TrimPrefix(pinnedVersion, "v"))
+		// Both prefixed and unprefixed values must resolve.
+		for _, rcValue := range []string{pinnedVersion, strings.TrimPrefix(pinnedVersion, "v")} {
+			os.WriteFile(filepath.Join(project, ".bvmrc"), []byte(rcValue+"\n"), 0o644)
+
+			out, err := runIn(t, project, "use")
+			requireSuccess(t, out, err, "bvm use with .bvmrc "+rcValue)
+			if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
+				t.Fatalf("after 'bvm use' via .bvmrc %q, bun --version = %q", rcValue, got)
+			}
 		}
 
-		out, err = runIn(t, project, "install")
+		out, err := runIn(t, project, "install")
 		requireSuccess(t, out, err, "bvm install with .bvmrc (already installed)")
 	})
 

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/chathula/bvm/util"
 )
 
 func TestResolveVersionArgExplicitWins(t *testing.T) {
@@ -53,4 +55,32 @@ func TestResolveVersionArgErrors(t *testing.T) {
 			t.Fatal("expected error for .bvmrc without a version line")
 		}
 	})
+}
+
+func TestUseReadsRCWithAndWithoutVPrefix(t *testing.T) {
+	setupCommandEnv(t)
+
+	// Install a fake version to activate.
+	dir, err := util.VersionDir("v1.4.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, util.BinaryName()), []byte("x"), 0o755)
+
+	for _, rcValue := range []string{"v1.4.0", "1.4.0"} {
+		t.Run(rcValue, func(t *testing.T) {
+			tmp := t.TempDir()
+			t.Chdir(tmp)
+			os.WriteFile(filepath.Join(tmp, rcFileName), []byte(rcValue+"\n"), 0o644)
+
+			if err := Use(""); err != nil {
+				t.Fatalf("Use() with .bvmrc %q error = %v", rcValue, err)
+			}
+			active, err := util.ActiveVersion()
+			if err != nil || active != "v1.4.0" {
+				t.Fatalf("active = (%q, %v), want v1.4.0", active, err)
+			}
+		})
+	}
 }

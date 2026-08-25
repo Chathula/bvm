@@ -75,6 +75,7 @@ Rules:
 
 - `.bvmrc` is looked up in the **current working directory**
 - Blank lines and `#` comments are ignored; the first version line is used
+- With or without the `v` prefix — `1.4.0` and `v1.4.0` are equivalent
 - `latest` inside `.bvmrc` works for `bvm install`
 - An explicit CLI argument always takes precedence over `.bvmrc`
 
