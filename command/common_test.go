@@ -54,27 +54,19 @@ func TestResolveVersionArgEmptyCases(t *testing.T) {
 
 func TestUseReadsRCWithAndWithoutVPrefix(t *testing.T) {
 	setupCommandEnv(t)
-
-	// Install a fake version to activate.
-	dir, err := util.VersionDir("v1.4.0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.MkdirAll(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, util.BinaryName()), []byte("x"), 0o755)
+	quietShim(t)
 
 	for _, rcValue := range []string{"v1.4.0", "1.4.0"} {
 		t.Run(rcValue, func(t *testing.T) {
-			tmp := t.TempDir()
-			t.Chdir(tmp)
-			os.WriteFile(filepath.Join(tmp, rcFileName), []byte(rcValue+"\n"), 0o644)
+			fakeInstall(t, "v1.4.0")
+			t.Chdir(t.TempDir())
 
-			if err := Use(""); err != nil {
-				t.Fatalf("Use() with .bvmrc %q error = %v", rcValue, err)
+			if err := Use(rcValue); err != nil {
+				t.Fatalf("Use(%q) error = %v", rcValue, err)
 			}
-			active, err := util.ActiveVersion()
-			if err != nil || active != "v1.4.0" {
-				t.Fatalf("active = (%q, %v), want v1.4.0", active, err)
+			_, pin := util.FindRCHere()
+			if pin != "v1.4.0" {
+				t.Fatalf("pin = %q, want v1.4.0", pin)
 			}
 		})
 	}

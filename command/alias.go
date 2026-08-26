@@ -41,12 +41,15 @@ func Alias(name, version string) error {
 	if err := util.SetDefaultVersion(canonical); err != nil {
 		return fail("%v", err)
 	}
+	if err := ensureShim(); err != nil {
+		fmt.Println(color.YellowString("Warning: could not install the bun shim: %v", err))
+	}
 
 	fmt.Println(color.GreenString("Default bun version set to %s", canonical))
 	if !util.IsInstalled(canonical) {
 		fmt.Println(color.YellowString("Run 'bvm install' to install it."))
 	} else {
-		fmt.Println(color.HiBlackString("Activate it anytime with 'bvm use default'."))
+		fmt.Println(color.HiBlackString("New shells and unpinned directories will use it. Pin a project with 'bvm use <version>'."))
 	}
 	return nil
 }

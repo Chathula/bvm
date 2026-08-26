@@ -8,7 +8,8 @@ import (
 	"github.com/fatih/color"
 )
 
-// List prints locally installed Bun versions, marking the active one.
+// List prints locally installed Bun versions, marking the global default
+// and the version pinned to the current directory (if any).
 func List() error {
 	versions, err := util.LocalVersions()
 	if err != nil {
@@ -19,26 +20,26 @@ func List() error {
 		return nil
 	}
 
-	active, err := util.ActiveVersion()
+	def, err := util.DefaultVersion()
 	if err != nil {
 		return fail("%v", err)
 	}
-	def, _ := util.DefaultVersion()
+	_, pinned := util.FindRCHere()
 
 	for _, version := range versions {
 		marker := "  "
 		name := version
-		if version == active {
+		if version == def {
 			marker = "*"
 			name = color.GreenString(version)
 		}
 
 		var tags []string
-		if version == active {
-			tags = append(tags, "active")
-		}
-		if version == def && def != "" {
+		if version == def {
 			tags = append(tags, "default")
+		}
+		if pinned != "" && version == pinned {
+			tags = append(tags, "this project")
 		}
 		suffix := ""
 		if len(tags) > 0 {

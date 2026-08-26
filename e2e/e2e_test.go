@@ -69,6 +69,19 @@ func runIn(t *testing.T, dir string, args ...string) (string, error) {
 	return runWithTimeout(cmd, 10*time.Minute)
 }
 
+// runBun invokes the installed bun shim the way a user's shell would.
+func runBun(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	name := "bun"
+	if runtime.GOOS == "windows" {
+		name = "bun.exe"
+	}
+	cmd := exec.Command(filepath.Join(homeDir, ".bun", "bin", name), args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "BVM_DIR="+bvmRoot, "HOME="+homeDir, "USERPROFILE="+homeDir)
+	return runWithTimeout(cmd, time.Minute)
+}
+
 func runWithTimeout(cmd *exec.Cmd, timeout time.Duration) (string, error) {
 	var buf strings.Builder
 	cmd.Stdout = &buf
@@ -101,23 +114,30 @@ func requireFailure(t *testing.T, out string, err error, context string) {
 	}
 }
 
-func bunVersionOutput(t *testing.T) string {
+func bunVersionAt(t *testing.T, dir string) string {
 	t.Helper()
-	name := "bun"
-	if runtime.GOOS == "windows" {
-		name = "bun.exe"
-	}
-	cmd := exec.Command(filepath.Join(homeDir, ".bun", "bin", name), "--version")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir, "USERPROFILE="+homeDir)
-	out, err := runWithTimeout(cmd, time.Minute)
-	requireSuccess(t, out, err, "activated bun --version")
+	out, err := runBun(t, dir, "--version")
+	requireSuccess(t, out, err, "bun --version in "+dir)
 	return strings.TrimSpace(out)
+}
+
+func assertDefaultAlias(t *testing.T, want string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(bvmRoot, "default"))
+	if err != nil {
+		t.Fatalf("default alias file missing: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != want {
+		t.Fatalf("default alias = %q, want %q", got, want)
+	}
 }
 
 // TestE2EFlow runs the full lifecycle in order; subtests share state on
 // purpose since each step builds on the previous one.
 func TestE2EFlow(t *testing.T) {
 	var latestVersion string
+	freshDir := filepath.Join(homeDir, "elsewhere") // no .bvmrc anywhere above
+	os.MkdirAll(freshDir, 0o755)
 
 	t.Run("ListRemoteShowsVersions", func(t *testing.T) {
 		out, err := run(t, "list-remote")
@@ -133,113 +153,125 @@ func TestE2EFlow(t *testing.T) {
 		latestVersion = strings.TrimSpace(strings.TrimSuffix(last, "(latest)"))
 	})
 
-	t.Run("InstallPinnedVersionAndActivate", func(t *testing.T) {
+	t.Run("FirstInstallBecomesDefault", func(t *testing.T) {
 		out, err := run(t, "install", pinnedVersion)
 		requireSuccess(t, out, err, "bvm install "+pinnedVersion)
 
-		if !utilIsInstalled(t, pinnedVersion) {
-			t.Fatal("version directory/binary missing after install")
-		}
-		if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
-			t.Fatalf("activated bun --version = %q, want %q", got, strings.TrimPrefix(pinnedVersion, "v"))
-		}
-		// First ever install must record itself as the default alias.
 		assertDefaultAlias(t, pinnedVersion)
+		// New shells / unpinned directories get the default.
+		if got := bunVersionAt(t, freshDir); got != strings.TrimPrefix(pinnedVersion, "v") {
+			t.Fatalf("fresh dir bun --version = %q, want default %q", got, strings.TrimPrefix(pinnedVersion, "v"))
+		}
 	})
 
-	t.Run("InstallLatestAndActivate", func(t *testing.T) {
+	t.Run("SecondInstallDoesNotStealDefault", func(t *testing.T) {
 		out, err := run(t, "install", "latest")
 		requireSuccess(t, out, err, "bvm install latest")
 
-		want := strings.TrimPrefix(latestVersion, "v")
-		if got := bunVersionOutput(t); got != want {
-			t.Fatalf("after 'install latest', bun --version = %q, want %q", got, want)
-		}
-		// A later install must not steal the default.
 		assertDefaultAlias(t, pinnedVersion)
-	})
-
-	t.Run("UseSwitchesActiveVersion", func(t *testing.T) {
-		out, err := run(t, "use", pinnedVersion)
-		requireSuccess(t, out, err, "bvm use "+pinnedVersion)
-		if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
-			t.Fatalf("after 'use', bun --version = %q, want %q", got, strings.TrimPrefix(pinnedVersion, "v"))
+		if got := bunVersionAt(t, freshDir); got != strings.TrimPrefix(pinnedVersion, "v") {
+			t.Fatalf("default changed by second install: %q", got)
 		}
 	})
 
-	t.Run("UseLatestResolvesHighestInstalled", func(t *testing.T) {
-		out, err := run(t, "use", "latest")
-		requireSuccess(t, out, err, "bvm use latest")
-		if got := bunVersionOutput(t); got != strings.TrimPrefix(latestVersion, "v") {
-			t.Fatalf("'use latest' gave %q, want %q", got, strings.TrimPrefix(latestVersion, "v"))
-		}
-		// Switch back for subsequent steps.
-		if out, err := run(t, "use", pinnedVersion); err != nil {
-			t.Fatalf("use %s failed: %v\n%s", pinnedVersion, err, out)
+	t.Run("AliasDefaultSwitchesUnpinnedDirs", func(t *testing.T) {
+		out, err := run(t, "alias", "default", latestVersion)
+		requireSuccess(t, out, err, "bvm alias default")
+
+		if got := bunVersionAt(t, freshDir); got != strings.TrimPrefix(latestVersion, "v") {
+			t.Fatalf("fresh dir bun --version = %q, want %q", got, strings.TrimPrefix(latestVersion, "v"))
 		}
 	})
 
-	t.Run("ListMarksActiveVersion", func(t *testing.T) {
-		out, err := run(t, "ls")
-		requireSuccess(t, out, err, "bvm ls")
-		for _, line := range nonEmptyLines(out) {
-			if strings.HasPrefix(line, "*") && strings.Contains(line, pinnedVersion) {
-				return
-			}
-		}
-		t.Fatalf("active marker missing for %s in:\n%s", pinnedVersion, out)
-	})
-
-	t.Run("UninstallGuardsActiveVersion", func(t *testing.T) {
-		out, err := run(t, "uninstall", latestVersion)
-		requireSuccess(t, out, err, "uninstall inactive "+latestVersion)
-		if utilIsInstalled(t, latestVersion) {
-			t.Fatal("inactive version still installed after uninstall")
-		}
-
-		out, err = run(t, "uninstall", pinnedVersion)
-		requireFailure(t, out, err, "uninstall active "+pinnedVersion)
-		if !utilIsInstalled(t, pinnedVersion) {
-			t.Fatal("active version was removed despite guard")
-		}
-	})
-
-	t.Run("UseReadsDotBvmrc", func(t *testing.T) {
+	t.Run("UsePinsProjectDirectory", func(t *testing.T) {
 		project := filepath.Join(homeDir, "project")
 		os.MkdirAll(project, 0o755)
 
-		// Both prefixed and unprefixed values must resolve.
-		for _, rcValue := range []string{pinnedVersion, strings.TrimPrefix(pinnedVersion, "v")} {
-			os.WriteFile(filepath.Join(project, ".bvmrc"), []byte(rcValue+"\n"), 0o644)
+		out, err := runIn(t, project, "use", pinnedVersion)
+		requireSuccess(t, out, err, "bvm use "+pinnedVersion)
 
-			out, err := runIn(t, project, "use")
-			requireSuccess(t, out, err, "bvm use with .bvmrc "+rcValue)
-			if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
-				t.Fatalf("after 'bvm use' via .bvmrc %q, bun --version = %q", rcValue, got)
-			}
+		// Project resolves to the pin; everywhere else keeps the default.
+		if got := bunVersionAt(t, project); got != strings.TrimPrefix(pinnedVersion, "v") {
+			t.Fatalf("project bun --version = %q, want %q", got, strings.TrimPrefix(pinnedVersion, "v"))
+		}
+		if got := bunVersionAt(t, freshDir); got != strings.TrimPrefix(latestVersion, "v") {
+			t.Fatalf("fresh dir bun --version = %q, want default %q", got, strings.TrimPrefix(latestVersion, "v"))
 		}
 
-		out, err := runIn(t, project, "install")
-		requireSuccess(t, out, err, "bvm install with .bvmrc (already installed)")
+		// 'use default' clears the pin.
+		out, err = runIn(t, project, "use", "default")
+		requireSuccess(t, out, err, "bvm use default")
+		if got := bunVersionAt(t, project); got != strings.TrimPrefix(latestVersion, "v") {
+			t.Fatalf("after 'use default', project bun --version = %q, want %q", got, strings.TrimPrefix(latestVersion, "v"))
+		}
+
+		// Re-pin for the ls marker check.
+		if out, err := runIn(t, project, "use", pinnedVersion); err != nil {
+			t.Fatalf("re-pin failed: %v\n%s", err, out)
+		}
 	})
 
-	t.Run("DefaultAliasFallback", func(t *testing.T) {
-		out, err := run(t, "alias", "default", pinnedVersion)
-		requireSuccess(t, out, err, "bvm alias default")
-
-		// Plain 'bvm use' outside any project must fall back to the default.
-		fresh := filepath.Join(homeDir, "fresh-project")
-		os.MkdirAll(fresh, 0o755)
-		out, err = runIn(t, fresh, "use")
-		requireSuccess(t, out, err, "bvm use with default alias")
-		if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
-			t.Fatalf("after 'bvm use' via default alias, bun --version = %q", got)
+	t.Run("UseReadsDotBvmrcPrefixVariants", func(t *testing.T) {
+		project := filepath.Join(homeDir, "project")
+		for _, rcValue := range []string{pinnedVersion, strings.TrimPrefix(pinnedVersion, "v")} {
+			os.WriteFile(filepath.Join(project, ".bvmrc"), []byte(rcValue+"\n"), 0o644)
+			if got := bunVersionAt(t, project); got != strings.TrimPrefix(pinnedVersion, "v") {
+				t.Fatalf(".bvmrc %q resolved to %q", rcValue, got)
+			}
 		}
+	})
 
-		out, err = run(t, "ls")
+	t.Run("ListShowsMarkers", func(t *testing.T) {
+		project := filepath.Join(homeDir, "project")
+		out, err := runIn(t, project, "ls")
 		requireSuccess(t, out, err, "bvm ls")
-		if !strings.Contains(out, "default") {
-			t.Fatalf("'ls' output missing default marker:\n%s", out)
+		if !strings.Contains(out, "default") || !strings.Contains(out, "this project") {
+			t.Fatalf("markers missing in:\n%s", out)
+		}
+	})
+
+	t.Run("UninstallDefaultReassigns", func(t *testing.T) {
+		out, err := run(t, "uninstall", latestVersion)
+		requireSuccess(t, out, err, "uninstall default "+latestVersion)
+
+		assertDefaultAlias(t, pinnedVersion)
+		if got := bunVersionAt(t, freshDir); got != strings.TrimPrefix(pinnedVersion, "v") {
+			t.Fatalf("after default uninstall, bun --version = %q, want %q", got, strings.TrimPrefix(pinnedVersion, "v"))
+		}
+	})
+
+	t.Run("UninstallLastVersionCleansUp", func(t *testing.T) {
+		out, err := run(t, "uninstall", pinnedVersion)
+		requireSuccess(t, out, err, "uninstall last "+pinnedVersion)
+
+		shim := "bun"
+		if runtime.GOOS == "windows" {
+			shim = "bun.exe"
+		}
+		if _, err := os.Stat(filepath.Join(homeDir, ".bun", "bin", shim)); !os.IsNotExist(err) {
+			t.Fatal("shim still present after removing the last version")
+		}
+		_, err = runBun(t, freshDir, "--version")
+		requireFailure(t, "", err, "bun --version with nothing installed")
+	})
+
+	t.Run("DoctorRunsAfterReinstall", func(t *testing.T) {
+		out, err := run(t, "install", pinnedVersion)
+		requireSuccess(t, out, err, "reinstall "+pinnedVersion)
+
+		// Put the shim dir on PATH so the PATH check passes too.
+		cmd := exec.Command(bvmBin, "doctor")
+		cmd.Dir = freshDir
+		cmd.Env = append(os.Environ(),
+			"BVM_DIR="+bvmRoot,
+			"HOME="+homeDir,
+			"USERPROFILE="+homeDir,
+			"PATH="+filepath.Join(homeDir, ".bun", "bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
+		)
+		out, err = runWithTimeout(cmd, 5*time.Minute)
+		requireSuccess(t, out, err, "bvm doctor")
+		if !strings.Contains(out, "releases API reachable") {
+			t.Fatalf("doctor output missing checks:\n%s", out)
 		}
 	})
 
@@ -247,28 +279,6 @@ func TestE2EFlow(t *testing.T) {
 		out, err := run(t, "install", "not-a-version")
 		requireFailure(t, out, err, "install not-a-version")
 	})
-}
-
-func utilIsInstalled(t *testing.T, version string) bool {
-	t.Helper()
-	binary := "bun"
-	if runtime.GOOS == "windows" {
-		binary = "bun.exe"
-	}
-	_, err := os.Stat(filepath.Join(bvmRoot, "versions", version, binary))
-	return err == nil
-}
-
-// assertDefaultAlias checks $BVM_DIR/default points at the expected version.
-func assertDefaultAlias(t *testing.T, want string) {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(bvmRoot, "default"))
-	if err != nil {
-		t.Fatalf("default alias file missing: %v", err)
-	}
-	if got := strings.TrimSpace(string(data)); got != want {
-		t.Fatalf("default alias = %q, want %q", got, want)
-	}
 }
 
 func nonEmptyLines(s string) []string {

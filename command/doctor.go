@@ -40,76 +40,74 @@ func linkDetail(goos, binPath string, exists bool) string {
 	return ""
 }
 
-// buildDoctorChecks assembles every diagnostic, split from printing so it
-// stays unit-testable.
-func buildDoctorChecks() []check {
-	var checks []check
-
-	root, err := util.BVMDir()
-	if err == nil {
-		installed, _ := util.LocalVersions()
-		checks = append(checks, check{
-			name:   fmt.Sprintf("bvm directory (%s)", root),
-			ok:     true,
-			detail: fmt.Sprintf("%d version(s) installed", len(installed)),
-		})
-	} else {
-		checks = append(checks, check{name: "bvm directory", ok: false, detail: err.Error()})
+// doctorChecks returns each diagnostic as a thunk so Doctor can print
+// results progressively (the network probe runs last, after the user has
+// already seen the local results).
+func doctorChecks() []func() check {
+	return []func() check{
+		func() check {
+			root, err := util.BVMDir()
+			if err != nil {
+				return check{name: "bvm directory", ok: false, detail: err.Error()}
+			}
+			installed, _ := util.LocalVersions()
+			return check{
+				name:   fmt.Sprintf("bvm directory (%s)", root),
+				ok:     true,
+				detail: fmt.Sprintf("%d version(s) installed", len(installed)),
+			}
+		},
+		func() check {
+			def, err := util.DefaultVersion()
+			switch {
+			case err != nil:
+				return check{name: "default alias", ok: false, detail: err.Error()}
+			case def == "":
+				return check{name: "default alias", ok: true, detail: "not set — 'bvm use' falls back to highest installed"}
+			default:
+				ok := util.IsInstalled(def)
+				detail := def
+				if !ok {
+					detail += " (not installed)"
+				}
+				return check{name: "default alias", ok: ok, detail: detail}
+			}
+		},
+		func() check {
+			binPath, err := util.BunBinPath()
+			if err != nil {
+				return check{name: "bun shim", ok: false, detail: err.Error()}
+			}
+			_, statErr := os.Stat(binPath)
+			detail := binPath + linkDetail(runtime.GOOS, binPath, statErr == nil)
+			return check{name: "bun shim (~/.bun/bin)", ok: statErr == nil, detail: detail}
+		},
+		func() check {
+			binPath, _ := util.BunBinPath()
+			binDir := filepath.Dir(binPath)
+			onPath := util.PathContains(binDir)
+			return check{name: "bun shim on PATH", ok: onPath, detail: pathHint(runtime.GOOS, onPath, binDir)}
+		},
+		func() check {
+			version, source, err := util.ResolveVersion()
+			if err != nil {
+				return check{name: "version for this directory", ok: false, detail: err.Error()}
+			}
+			return check{name: "version for this directory", ok: true, detail: version + " (" + source + ")"}
+		},
+		func() check {
+			ok, detail := probeAPI()
+			return check{name: "releases API reachable", ok: ok, detail: detail}
+		},
 	}
-
-	active, activeErr := util.ActiveVersion()
-	switch {
-	case activeErr != nil:
-		checks = append(checks, check{name: "active version marker", ok: false, detail: activeErr.Error()})
-	case active == "":
-		checks = append(checks, check{name: "active version", ok: true, detail: "none — run 'bvm install latest'"})
-	default:
-		ok := util.IsInstalled(active)
-		detail := active
-		if !ok {
-			detail += " (binary missing!)"
-		}
-		checks = append(checks, check{name: "active version", ok: ok, detail: detail})
-	}
-
-	def, defErr := util.DefaultVersion()
-	switch {
-	case defErr != nil:
-		checks = append(checks, check{name: "default alias", ok: false, detail: defErr.Error()})
-	case def == "":
-		checks = append(checks, check{name: "default alias", ok: true, detail: "not set — 'bvm use' falls back to highest installed"})
-	default:
-		ok := util.IsInstalled(def)
-		detail := def
-		if !ok {
-			detail += " (not installed)"
-		}
-		checks = append(checks, check{name: "default alias", ok: ok, detail: detail})
-	}
-
-	binPath, err := util.BunBinPath()
-	if err != nil {
-		checks = append(checks, check{name: "bun binary link", ok: false, detail: err.Error()})
-	} else {
-		_, statErr := os.Stat(binPath)
-		detail := binPath + linkDetail(runtime.GOOS, binPath, statErr == nil)
-		checks = append(checks, check{name: "bun binary link", ok: statErr == nil, detail: detail})
-	}
-
-	binDir := filepath.Dir(binPath)
-	onPath := util.PathContains(binDir)
-	checks = append(checks, check{name: "~/.bun/bin on PATH", ok: onPath, detail: pathHint(runtime.GOOS, onPath, binDir)})
-
-	apiOK, apiDetail := probeAPI()
-	checks = append(checks, check{name: "releases API reachable", ok: apiOK, detail: apiDetail})
-
-	return checks
 }
 
 // Doctor diagnoses the local bvm/bun setup and exits non-zero on failures.
+// Results print as they are evaluated so nothing appears to hang.
 func Doctor() error {
 	failed := 0
-	for _, c := range buildDoctorChecks() {
+	for _, evaluate := range doctorChecks() {
+		c := evaluate()
 		mark := color.GreenString("✔")
 		if !c.ok {
 			mark = color.RedString("✘")

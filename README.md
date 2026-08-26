@@ -9,7 +9,8 @@
 ## Features
 
 - Install any published Bun version (`bvm install 1.1.0`, `bvm install latest`)
-- Switch between installed versions instantly (`bvm use 1.4.0`)
+- nvm-style **default version**: new shells and unpinned directories use it
+- **Per-project versions** via `.bvmrc` (`bvm use 1.4.0` pins the current project)
 - Works natively on **Linux, macOS (Intel & Apple Silicon) and Windows**
 - Zero runtime dependencies — a single static binary
 
@@ -18,7 +19,31 @@
 ### Linux / macOS
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/chathula/bvm/main/install.sh | bash
+curl -s -S -L https://raw.githubusercontent.com/chathula/bvm/main/install.sh | bash
+```
+
+Or if you are using zsh just change `bash` with `zsh`:
+
+```zsh
+curl -s -S -L https://raw.githubusercontent.com/chathula/bvm/main/install.sh | zsh
+```
+
+> **Using a different shell?** No problem — the command above works in bash,
+> zsh and fish as-is. The installer detects your login shell, updates the
+> right profile (`.zshrc`, `.bashrc` or fish's `config.fish`), and prints the
+> exact command to activate bvm in your current session when it finishes.
+
+The installer puts the `bvm` binary in `~/.bvm/bin` and adds it to your PATH.
+**`bvm` is not available in the current session yet** — either open a new
+terminal, or run the `source ~/.zshrc` / `source ~/.bashrc` command the
+installer prints when it finishes.
+
+Prefer not piping scripts into a shell? Two-step equivalent:
+
+```sh
+curl -fsSLO https://raw.githubusercontent.com/chathula/bvm/main/install.sh
+less install.sh        # inspect it first
+bash install.sh && rm install.sh
 ```
 
 ### Windows (PowerShell)
@@ -27,98 +52,136 @@ curl -fsSL https://raw.githubusercontent.com/chathula/bvm/main/install.sh | bash
 powershell -c "irm https://raw.githubusercontent.com/chathula/bvm/main/install.ps1 | iex"
 ```
 
-Restart your shell afterwards so the updated `PATH` is picked up.
+Installs to `%USERPROFILE%\.bvm\bin` and adds it to your user PATH — reopen
+your terminal afterwards.
+
+### Other options
+
+```sh
+# If you have Go tooling installed:
+go install github.com/chathula/bvm@latest
+```
+
+Or download an archive for your platform from the
+[releases page](https://github.com/Chathula/bvm/releases), unzip it, and put
+the `bvm` binary somewhere on your `PATH`.
+
+## Troubleshooting
+
+- **`command not found: bvm` right after installing** — your current shell
+  hasn't re-read its profile. Open a new terminal, or run
+  `source ~/.zshrc` (zsh) / `source ~/.bashrc` (bash) /
+  `source ~/.config/fish/config.fish` (fish).
+- **Installer prints nothing / 404** — make sure the URL matches your branch
+  (`main`) and that the repository is public; retry with `-v` on curl.
+- **`unzip` missing** — the installer needs it; on Debian/Ubuntu run
+  `sudo apt-get install unzip`, on Alpine `apk add unzip`.
+- **Existing Bun installed another way** — bvm activates versions through
+  `~/.bun/bin/bun`; if that path belongs to another install, remove it from
+  your PATH or let bvm manage it going forward. Run `bvm doctor` any time to
+  diagnose your setup.
 
 ## Usage
 
 ```text
 bvm install [version]   Install a bun version ('latest' allowed; defaults to .bvmrc)
-bvm use [version]       Activate an installed version ('latest', 'default', or .bvmrc)
-bvm alias default <v>   Set the fallback version for 'bvm use'
+bvm use [version]       Pin a version to the current directory; 'default' clears the pin
+bvm alias default <v>   Set the version used outside pinned projects
 bvm list                List installed versions
 bvm list-remote         List all remote versions
 bvm uninstall <version> Remove an installed version
 bvm doctor              Diagnose your bvm/bun setup
 ```
 
+(No separate `which` command — `bvm use` with no argument shows which
+version applies in the current directory and why.)
+
 Examples:
 
 ```sh
-bvm install latest     # installs and activates the newest Bun release
-bvm install 1.1.0      # installs a specific version
-bvm use 1.1.0          # switches to it
-bvm ls                 # * marks the active version
-bvm doctor             # verify PATH, active version, API reachability
+bvm install latest      # first install ever -> becomes the default
+bvm install 1.1.0       # installs a specific version
+bvm use 1.1.0           # pins 1.1.0 to the current project (.bvmrc)
+bvm use                 # what version applies in this directory, and why
+bvm use default         # remove this project's pin
+bvm ls                  # * marks the default, (this project) marks the pin
+bvm doctor              # verify shim, PATH, resolution, API reachability
 ```
 
 > Windows note: Bun ships native Windows builds starting at **v1.1.0**;
 > older versions cannot be installed on Windows.
 
-## Project configuration (`.bvmrc`)
+## How version resolution works
 
-Like `.nvmrc` for nvm, pin the Bun version your project needs by committing a
-`.bvmrc` file to its root:
+bvm works like nvm's default alias, implemented through a **shim**: the
+`bun` command on your PATH is bvm itself, and it resolves which real Bun
+binary to run on every invocation.
 
-```text
-# .bvmrc — first non-comment line wins
-1.4.0
-```
+1. The nearest `.bvmrc` walking up from your current directory
+   (project pin — created by `bvm use <version>`)
+2. The **default** alias (`bvm alias default <version>`)
+3. Nothing — you get a helpful error instead of a mystery binary
 
-Then anyone can bootstrap the project without typing a version:
+Consequences (matching nvm's mental model):
 
-```sh
-bvm install   # reads 1.4.0 from .bvmrc, downloads and activates it
-bvm use       # activates 1.4.0 (must already be installed)
-bvm use latest  # explicit args always win over .bvmrc
-```
+- The **first version you install becomes the default**
+- New shells and unpinned directories always run the **default** version
+- `bvm use` only affects the **current project**, never other directories
+- `bun` works everywhere: no shell hooks or PATH juggling per project
 
-Rules:
-
-- `.bvmrc` is looked up in the **current working directory**
-- Blank lines and `#` comments are ignored; the first version line is used
-- With or without the `v` prefix — `1.4.0` and `v1.4.0` are equivalent
-- `latest` inside `.bvmrc` works for `bvm install`
-- An explicit CLI argument always takes precedence over `.bvmrc`
-
-## Default version
-
-Like nvm's `default` alias, bvm keeps a fallback version used when no
-explicit version or `.bvmrc` applies:
-
-```sh
-bvm install latest      # first install ever → automatically set as default
-bvm alias default 1.1.0 # change the default later
-bvm use default         # activate it explicitly
-bvm use                 # outside any project: falls back to the default
-```
-
-Resolution order for `bvm use` with no argument:
-
-1. `.bvmrc` in the current directory (project pin)
-2. the **default** alias (`bvm alias default <version>`)
-3. highest installed version
-
-`bvm ls` marks both roles:
+`bvm ls` shows both roles:
 
 ```text
-* v1.4.0 (active)
-  v1.1.0 (default)
+  v1.3.1 (this project)
+* v1.4.0 (default)
 ```
 
-If the default's binary is ever uninstalled, the fallback silently moves to
-the highest installed version until you point the alias somewhere valid.
+### Uninstalling a Bun version
 
-## How it works
+```sh
+bvm uninstall 1.3.1
+```
 
-| Location | Purpose |
-| --- | --- |
-| `$BVM_DIR/versions/<vX.Y.Z>/` | Installed Bun binaries (`$BVM_DIR` defaults to `~/.bvm`) |
-| `~/.bun/bin/bun` | Symlink (unix) or copy (Windows) to the active version |
-| `$BVM_DIR/active` | Marker recording the active version |
-| `$BVM_DIR/default` | The default version alias |
+- Removing a regular version just deletes it
+- Removing the **default** version promotes the highest remaining one —
+  `bun` keeps working everywhere
+- Removing the **last** version also removes the shim and the default
+  alias; `bun` prints a clear "not installed" message until you install again
+- If the current project's `.bvmrc` pinned the removed version, bvm warns
+  you to update it
 
-Because activation goes through `~/.bun/bin`, any existing scripts or tooling
-that expect Bun there keep working unchanged.
+## Uninstalling bvm
+
+Manual removal, nvm-style:
+
+```sh
+# 1. remove the installation directory (versions, shim, aliases)
+bvm_dir="${BVM_DIR:-~/.bvm}"
+rm -rf "$bvm_dir"
+
+# 2. remove the shim bvm placed on your PATH
+rm -f ~/.bun/bin/bun        # unix (skip if you installed Bun independently)
+```
+
+Then edit your shell profile (`~/.zshrc`, `~/.bashrc` or fish's
+`config.fish`) and delete the lines bvm added:
+
+```sh
+# bvm & bun
+export BVM_DIR="$HOME/.bvm"
+export PATH="$BVM_DIR/bin:$PATH"
+```
+
+On Windows (PowerShell):
+
+```powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.bvm"
+Remove-Item -Force "$env:USERPROFILE\.bun\bin\bun.exe"
+# then remove "%USERPROFILE%\.bvm\bin" from your PATH (Settings > Environment Variables)
+```
+
+Run `bvm doctor` before uninstalling if you want a report of everything
+bvm currently manages.
 
 ## Development
 

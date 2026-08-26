@@ -32,14 +32,12 @@ func TestPathHelpersFailWithoutHome(t *testing.T) {
 		"VersionDir":     func() (string, error) { return VersionDir("v1.0.0") },
 		"BunBinPath":     BunBinPath,
 		"BunBinDir":      BunBinDir,
-		"ActiveVersion":  ActiveVersion,
 		"DefaultVersion": DefaultVersion,
 		"LocalVersions":  func() (string, error) { _, err := LocalVersions(); return "", err },
-		"recordActive":   func() (string, error) { return "", recordActive("v1.0.0") },
 		"SetDefault":     func() (string, error) { return "", SetDefaultVersion("v1.0.0") },
-		"Deactivate":     func() (string, error) { return "", Deactivate() },
+		"ClearDefault":   func() (string, error) { return "", ClearDefault() },
 		"EnsurePATH":     func() (string, error) { _, err := EnsurePATH(); return "", err },
-		"Activate":       func() (string, error) { return "", Activate("v1.0.0") },
+		"EnsureShim":     func() (string, error) { return "", EnsureShim() },
 	} {
 		if _, err := fn(); err == nil {
 			t.Errorf("%s expected error with unresolvable home", name)
@@ -47,44 +45,6 @@ func TestPathHelpersFailWithoutHome(t *testing.T) {
 	}
 	if IsInstalled("v1.0.0") {
 		t.Error("IsInstalled should be false when home is unresolvable")
-	}
-}
-
-// bvmDirValidHomeBroken covers functions whose later steps need a home even
-// though $BVM_DIR short-circuits the first lookup.
-func TestBvmDirValidHomeBroken(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("BVM_DIR", root)
-	t.Setenv("HOME", "")
-	t.Setenv("USERPROFILE", "")
-
-	fakeInstall(t, "v1.0.0", "x")
-	os.MkdirAll(filepath.Join(root, ".bvm"), 0o755)
-
-	// Activate: BunBinPath fails after VersionDir succeeds.
-	if err := Activate("v1.0.0"); err == nil {
-		t.Fatal("expected Activate to fail resolving ~/.bun/bin/bun")
-	}
-	// Deactivate: BunBinPath fails after BVMDir succeeds.
-	if err := Deactivate(); err == nil {
-		t.Fatal("expected Deactivate to fail resolving ~/.bun/bin/bun")
-	}
-}
-
-func TestDeactivateNothingInstalledIsNoop(t *testing.T) {
-	isolateEnv(t)
-	if err := Deactivate(); err != nil {
-		t.Fatalf("Deactivate() on clean env error = %v", err)
-	}
-}
-
-func TestActivateExposeError(t *testing.T) {
-	isolateEnv(t)
-	fakeInstall(t, "v1.0.0", "x")
-
-	stub(t, &expose, func(string, string, bool) error { return fmt.Errorf("injected") })
-	if err := Activate("v1.0.0"); err == nil {
-		t.Fatal("expected expose failure to propagate")
 	}
 }
 
@@ -148,16 +108,6 @@ func TestLocalVersionsReadError(t *testing.T) {
 	})
 }
 
-// root2 re-derives the isolated bvm root after a fresh isolateEnv call.
-func root2(t *testing.T) string {
-	t.Helper()
-	r, err := BVMDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
-}
-
 // stub swaps a package-level seam for the duration of a test.
 func stub[T any](t *testing.T, target *T, value T) {
 	t.Helper()
@@ -199,63 +149,13 @@ func TestSetDefaultVersionErrors(t *testing.T) {
 
 // --- activate.go ---
 
-func TestActiveVersionReadError(t *testing.T) {
-	root := isolateEnv(t)
-	os.MkdirAll(filepath.Join(root, ".bvm", activeMarker), 0o755)
-
-	if _, err := ActiveVersion(); err == nil {
-		t.Fatal("expected error when active marker is a directory")
-	}
-}
-
-func TestActivateMkdirBinDirError(t *testing.T) {
-	home := isolateEnv(t)
-	fakeInstall(t, "v1.0.0", "x")
-
-	os.MkdirAll(filepath.Join(home, ".bun"), 0o755)
-	os.WriteFile(filepath.Join(home, ".bun", "bin"), []byte("file"), 0o644)
-	if err := Activate("v1.0.0"); err == nil {
-		t.Fatal("expected MkdirAll error when bun bin dir is a file")
-	}
-}
-
-func TestActivateRemoveOldBinaryError(t *testing.T) {
-	isolateEnv(t)
-	fakeInstall(t, "v1.0.0", "x")
-
-	stub(t, &RemoveAll, func(string) error { return fmt.Errorf("injected") })
-	if err := Activate("v1.0.0"); err == nil {
-		t.Fatal("expected RemoveAll error")
-	}
-}
-
-func TestRecordActiveErrors(t *testing.T) {
-	t.Run("root is a file", func(t *testing.T) {
-		root := isolateEnv(t)
-		t.Setenv("BVM_DIR", filepath.Join(root, "as-file"))
-		os.WriteFile(filepath.Join(root, "as-file"), []byte("x"), 0o644)
-
-		if err := recordActive("v1.0.0"); err == nil {
-			t.Fatal("expected MkdirAll error")
-		}
-	})
-	t.Run("marker path is a directory", func(t *testing.T) {
-		root := isolateEnv(t)
-		os.MkdirAll(filepath.Join(root, ".bvm", activeMarker), 0o755)
-
-		if err := recordActive("v1.0.0"); err == nil {
-			t.Fatal("expected WriteFile error")
-		}
-	})
-}
-
 func TestExposeBinaryBothModes(t *testing.T) {
 	tmp := t.TempDir()
 	src := filepath.Join(tmp, "src-bin")
 	os.WriteFile(src, []byte("payload"), 0o755)
 
 	dst := filepath.Join(tmp, "dst-copy")
-	if err := exposeBinary(src, dst, false); err != nil {
+	if err := placeBinary(src, dst, false); err != nil {
 		t.Fatalf("copy mode error = %v", err)
 	}
 	if data, _ := os.ReadFile(dst); string(data) != "payload" {
@@ -263,7 +163,7 @@ func TestExposeBinaryBothModes(t *testing.T) {
 	}
 
 	dstLink := filepath.Join(tmp, "dst-link")
-	if err := exposeBinary(src, dstLink, true); err != nil {
+	if err := placeBinary(src, dstLink, true); err != nil {
 		// Windows may refuse symlinks without elevated rights; the
 		// statement is still exercised, which is what coverage needs.
 		if runtime.GOOS == "windows" {
@@ -283,13 +183,13 @@ func TestExposeBinaryBothModes(t *testing.T) {
 func TestCopyFileErrors(t *testing.T) {
 	tmp := t.TempDir()
 
-	if err := copyFile(filepath.Join(tmp, "missing"), filepath.Join(tmp, "out")); err == nil {
+	if err := copyBinary(filepath.Join(tmp, "missing"), filepath.Join(tmp, "out")); err == nil {
 		t.Fatal("expected open error for missing source")
 	}
 
 	// io.Copy from a directory fd fails with EISDIR.
 	out2 := filepath.Join(tmp, "out2")
-	if err := copyFile(tmp, out2); err == nil {
+	if err := copyBinary(tmp, out2); err == nil {
 		t.Fatal("expected copy error when source is a directory")
 	}
 
@@ -298,32 +198,8 @@ func TestCopyFileErrors(t *testing.T) {
 	os.WriteFile(srcFile, []byte("x"), 0o644)
 	dirDst := filepath.Join(tmp, "im-a-dir")
 	os.MkdirAll(dirDst, 0o755)
-	if err := copyFile(srcFile, dirDst); err == nil {
+	if err := copyBinary(srcFile, dirDst); err == nil {
 		t.Fatal("expected create error when destination is a directory")
-	}
-}
-
-func TestDeactivateErrorBranches(t *testing.T) {
-	breakHome(t)
-	if err := Deactivate(); err == nil {
-		t.Fatal("expected error with unresolvable home")
-	}
-
-	isolateEnv(t)
-	stub(t, &RemoveAll, func(string) error { return fmt.Errorf("injected") })
-	if err := Deactivate(); err == nil {
-		t.Fatal("expected RemoveAll error")
-	}
-
-	// Marker removal failure: marker exists as a NON-empty directory
-	// (os.Remove rejects non-empty dirs on every platform).
-	isolateEnv(t)
-	root, _ := BVMDir()
-	markerDir := filepath.Join(root, activeMarker)
-	os.MkdirAll(markerDir, 0o755)
-	os.WriteFile(filepath.Join(markerDir, "child"), []byte("x"), 0o644)
-	if err := Deactivate(); err == nil {
-		t.Fatal("expected marker remove error")
 	}
 }
 

@@ -4,6 +4,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/chathula/bvm/command"
 
@@ -14,7 +16,21 @@ import (
 // version is injected at release time via -ldflags "-X main.version=x.y.z".
 var version = "dev"
 
+// isShimInvocation reports whether this binary was invoked as the bun shim
+// (i.e. linked/copied to ~/.bun/bin/bun).
+func isShimInvocation() bool {
+	base := strings.ToLower(filepath.Base(os.Args[0]))
+	return base == "bun" || base == "bun.exe"
+}
+
 func main() {
+	// Invoked as "bun" (the shim): resolve the version for this directory
+	// and hand off to it instead of running the CLI.
+	if isShimInvocation() {
+		command.RunShim()
+		return
+	}
+
 	cliApp := cli.NewApp()
 	cliApp.Name = "bvm"
 	cliApp.Version = version
@@ -34,7 +50,7 @@ func main() {
 		},
 		{
 			Name:      "use",
-			Usage:     "Activate an installed bun version ('latest', 'default'; falls back to .bvmrc, then the default)",
+			Usage:     "Pin a bun version to the current directory (.bvmrc); 'default' clears the pin; no arg shows what applies here",
 			ArgsUsage: "[version]",
 			Action: func(c *cli.Context) error {
 				return command.Use(c.Args().First())

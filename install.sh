@@ -2,6 +2,17 @@
 
 set -e
 
+fetch() {
+	if command -v curl >/dev/null; then
+		curl --fail --location --progress-bar -o "$2" "$1"
+	elif command -v wget >/dev/null; then
+		wget -q --show-progress -O "$2" "$1"
+	else
+		echo "Error: curl or wget is required to install bvm." 1>&2
+		exit 1
+	fi
+}
+
 if ! command -v unzip >/dev/null; then
 	echo "Error: unzip is required to install bvm." 1>&2
 	exit 1
@@ -29,7 +40,7 @@ exe="$bvm_bin_dir/bvm"
 mkdir -p "$bvm_bin_dir"
 
 if [ "$1" = "" ]; then
-	curl --fail --location --progress-bar -o "$exe.zip" "$bvm_url"
+	fetch "$bvm_url" "$exe.zip"
 	unzip -o "$exe.zip" -d "$bvm_bin_dir"
 	rm "$exe.zip"
 else
@@ -43,24 +54,31 @@ fi
 
 chmod +x "$exe"
 
+# macOS: Apple Silicon kills unsigned or quarantine-flagged binaries with
+# "zsh: killed". Re-sign ad-hoc and drop the flag so the binary runs.
+if [ "$(uname)" = "Darwin" ] && command -v codesign >/dev/null; then
+	xattr -d com.apple.quarantine "$exe" 2>/dev/null || true
+	codesign --force --sign - "$exe" 2>/dev/null || true
+fi
+
 case $SHELL in
-*/zsh) shell_profile=".zshrc" ;;
-*/fish) shell_profile=".config/fish/config.fish" ;;
-*) shell_profile=".bashrc" ;;
+*/zsh) shell_profile=".zshrc"; source_cmd="source ~/.zshrc" ;;
+*/fish) shell_profile=".config/fish/config.fish"; source_cmd="source ~/.config/fish/config.fish" ;;
+*) shell_profile=".bashrc"; source_cmd="source ~/.bashrc" ;;
 esac
 
 if [ ! $BVM_DIR ]; then
 	case $shell_profile in
 	.config/fish/config.fish)
 		{
-			echo -e '\n# bvm & bun'
+			printf '\n# bvm & bun\n'
 			command echo "set --export BVM_DIR \"$bvm_dir\""
 			command echo "fish_add_path \"\$BVM_DIR/bin\""
 		} >>"$HOME/$shell_profile"
 		;;
 	*)
 		{
-			echo -e '\n# bvm & bun'
+			printf '\n# bvm & bun\n'
 			command echo "export BVM_DIR=\"$bvm_dir\""
 			command echo "export PATH=\"\$BVM_DIR/bin:\$PATH\""
 		} >>"$HOME/$shell_profile"
@@ -69,8 +87,9 @@ if [ ! $BVM_DIR ]; then
 fi
 
 echo "bvm was installed successfully to $exe"
-if command -v bvm >/dev/null; then
-	echo "Run 'bvm --help' to get started."
-else
-	echo "Reopen your shell, or run 'source $HOME/$shell_profile' to get started"
+if ! command -v bvm >/dev/null; then
+	echo
+	echo "bvm is not on this shell's PATH yet. To finish setup, either:"
+	echo "  1. open a new terminal, or"
+	echo "  2. run:  $source_cmd"
 fi

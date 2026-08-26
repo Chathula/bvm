@@ -62,11 +62,12 @@ func Install(arg string) error {
 		return fail("%v", err)
 	}
 
-	if err := util.Activate(version); err != nil {
-		return fail("Installed but failed to activate: %v", err)
+	if err := ensureShim(); err != nil {
+		return fail("Installed but could not set up the bun shim: %v", err)
 	}
 
-	// First ever install records itself as the default alias.
+	// First ever install records itself as the default alias, so new shells
+	// and unpinned directories use it (nvm semantics).
 	if err := ensureDefaultSet(version); err != nil {
 		fmt.Println(color.YellowString("Warning: could not set default alias: %v", err))
 	}
@@ -78,7 +79,10 @@ func Install(arg string) error {
 		fmt.Println(color.YellowString("Added %s to your PATH — restart your shell or source your profile.", "~/.bun/bin"))
 	}
 
-	fmt.Println(color.GreenString("Successfully installed and activated bun %s", version))
+	fmt.Println(color.GreenString("Successfully installed bun %s", version))
+	if def, _ := util.DefaultVersion(); def != version {
+		fmt.Println(color.YellowString("Run 'bvm use %s' to pin it in this project, or 'bvm alias default %s' to make it the default.", version, version))
+	}
 	return nil
 }
 
