@@ -40,9 +40,14 @@ func EnsurePATH() (bool, error) {
 	if PathContains(binDir) {
 		return false, nil
 	}
+	return applyProfiles(shellProfiles(runtime.GOOS, home, binDir))
+}
 
+// applyProfiles writes each profile's line when its shell exists on the
+// machine. Split from EnsurePATH so every branch is testable on any OS.
+func applyProfiles(profiles []shellProfile) (bool, error) {
 	changed := false
-	for _, c := range shellProfiles(runtime.GOOS, home, binDir) {
+	for _, c := range profiles {
 		if _, err := exec.LookPath(c.shell); err != nil {
 			continue // shell not installed on this machine
 		}

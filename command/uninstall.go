@@ -1,8 +1,6 @@
 package command
 
 import (
-	"os"
-
 	"github.com/chathula/bvm/util"
 )
 
@@ -29,7 +27,7 @@ func Uninstall(arg string) error {
 		return fail("cannot uninstall the active version — switch first with 'bvm use <other-version>'")
 	}
 
-	if err := os.RemoveAll(dir); err != nil {
+	if err := util.RemoveAll(dir); err != nil {
 		return fail("%v", err)
 	}
 	return nil

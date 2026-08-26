@@ -32,6 +32,9 @@ func ActiveVersion() (string, error) {
 // Activate exposes an installed version as ~/.bun/bin/bun — symlink on
 // unix, copy on Windows (symlinks need elevated rights there) — and records
 // it in $BVM_DIR/active.
+// expose is a var so tests can inject link/copy failures portably.
+var expose = exposeBinary
+
 func Activate(version string) error {
 	srcDir, err := VersionDir(version)
 	if err != nil {
@@ -47,12 +50,12 @@ func Activate(version string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(dst); err != nil {
+	if err := RemoveAll(dst); err != nil {
 		return err
 	}
 
 	src := filepath.Join(srcDir, BinaryName())
-	if err := exposeBinary(src, dst, runtime.GOOS != "windows"); err != nil {
+	if err := expose(src, dst, runtime.GOOS != "windows"); err != nil {
 		return err
 	}
 	return recordActive(version)
@@ -89,7 +92,7 @@ func Deactivate() error {
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(dst); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := RemoveAll(dst); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	err = os.Remove(filepath.Join(root, activeMarker))

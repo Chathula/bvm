@@ -19,7 +19,7 @@ func Use(arg string) error {
 		return fail("%v", err)
 	}
 
-	changed, err := util.EnsurePATH()
+	changed, err := ensurePATH()
 	if err != nil {
 		fmt.Println(color.YellowString("Warning: could not update shell profile: %v", err))
 	} else if changed {

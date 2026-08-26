@@ -16,6 +16,7 @@ import (
 var (
 	detectPlatformFn = util.DetectPlatform
 	downloadFile     = download
+	ensurePATH       = util.EnsurePATH
 )
 
 // Install downloads a Bun version and activates it. The version may be given
@@ -70,7 +71,7 @@ func Install(arg string) error {
 		fmt.Println(color.YellowString("Warning: could not set default alias: %v", err))
 	}
 
-	changed, err := util.EnsurePATH()
+	changed, err := ensurePATH()
 	if err != nil {
 		fmt.Println(color.YellowString("Warning: could not update shell profile: %v", err))
 	} else if changed {

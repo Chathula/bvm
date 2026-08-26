@@ -37,12 +37,10 @@ func zipWithBinary(t *testing.T, content string) []byte {
 	return buf.Bytes()
 }
 
-// quietPATH keeps EnsurePATH from touching real profiles during tests.
+// quietPATH keeps the real EnsurePATH from touching actual shell profiles.
 func quietPATH(t *testing.T) {
 	t.Helper()
-	binDir, _ := util.BunBinDir()
-	os.MkdirAll(binDir, 0o755)
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stub(t, &ensurePATH, func() (bool, error) { return false, nil })
 }
 
 // --- install.go ---
@@ -197,7 +195,9 @@ func TestInstallFailureBranches(t *testing.T) {
 	})
 	t.Run("default-alias warning", func(t *testing.T) {
 		setupCommandEnv(t)
-		quietPATH(t)
+		stub(t, &detectPlatformFn, func() (util.Platform, error) {
+			return util.Platform{OS: "darwin", Arch: "x64"}, nil
+		})
 		stub(t, &resolveTarget, func(string) (string, error) { return "v1.0.0", nil })
 		stub(t, &downloadFile, func(_ string, dest string) error {
 			return os.WriteFile(dest, zipWithBinary(t, "bin"), 0o644)
@@ -209,42 +209,25 @@ func TestInstallFailureBranches(t *testing.T) {
 		}
 	})
 	t.Run("profile warning and changed message", func(t *testing.T) {
-		env := setupWithFakeZsh(t)
-
+		setupCommandEnv(t)
 		stub(t, &resolveTarget, func(string) (string, error) { return "v1.0.0", nil })
 		stub(t, &downloadFile, func(_ string, dest string) error {
 			return os.WriteFile(dest, zipWithBinary(t, "bin"), 0o644)
 		})
 
-		// Corrupt rc -> warning branch.
-		os.MkdirAll(filepath.Join(env.home, ".zshrc"), 0o755)
+		// Profile update fails -> warning branch.
+		stub(t, &ensurePATH, func() (bool, error) { return false, fmt.Errorf("rc locked") })
 		if err := Install("1.0.0"); err != nil {
 			t.Fatalf("Install should succeed despite profile warning: %v", err)
 		}
 
-		// Healthy rc -> changed message (second version dir).
-		os.Remove(filepath.Join(env.home, ".zshrc"))
-		os.WriteFile(filepath.Join(env.home, ".zshrc"), []byte(""), 0o644)
+		// Profile updated -> changed message.
+		stub(t, &ensurePATH, func() (bool, error) { return true, nil })
 		stub(t, &resolveTarget, func(string) (string, error) { return "v2.0.0", nil })
 		if err := Install("2.0.0"); err != nil {
 			t.Fatalf("Install() error = %v", err)
 		}
 	})
-}
-
-// setupWithFakeZsh isolates the env and puts a fake zsh on PATH so
-// EnsurePATH attempts a real profile edit.
-func setupWithFakeZsh(t *testing.T) struct{ home string } {
-	t.Helper()
-	setupCommandEnv(t)
-	home, _ := os.UserHomeDir()
-
-	fakeBin := filepath.Join(t.TempDir(), "fakebin")
-	os.MkdirAll(fakeBin, 0o755)
-	os.WriteFile(filepath.Join(fakeBin, "zsh"), []byte("#!/bin/sh\n"), 0o755)
-	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	return struct{ home string }{home: home}
 }
 
 func TestDownloadErrorBranches(t *testing.T) {
@@ -289,12 +272,11 @@ func TestDownloadErrorBranches(t *testing.T) {
 		t.Fatal(".part file left behind after failed copy")
 	}
 
-	roDir := filepath.Join(t.TempDir(), "ro")
-	os.MkdirAll(roDir, 0o755)
-	os.Chmod(roDir, 0o500)
-	defer os.Chmod(roDir, 0o755)
-	if err := download(srvOK.URL, filepath.Join(roDir, "out")); err == nil {
-		t.Fatal("expected create error in readonly destination")
+	// Destination's temp file pre-occupied by a directory fails everywhere.
+	occupied := filepath.Join(t.TempDir(), "out")
+	os.MkdirAll(occupied+".part", 0o755)
+	if err := download(srvOK.URL, occupied); err == nil {
+		t.Fatal("expected create error for directory-occupied .part path")
 	}
 
 	if err := download(srvOK.URL, dest); err != nil {
@@ -329,27 +311,20 @@ func TestUseOutputBranches(t *testing.T) {
 	setupCommandEnv(t)
 	fakeInstall(t, "v1.0.0")
 
-	// Activate failure path: installed per resolveLocal, but the exposed
-	// binary cannot be replaced (readonly bin dir with existing dst).
-	binDir, _ := util.BunBinDir()
-	os.MkdirAll(binDir, 0o755)
-	os.WriteFile(filepath.Join(binDir, util.BinaryName()), []byte("old"), 0o755)
-	os.Chmod(binDir, 0o500)
-	defer os.Chmod(binDir, 0o755)
-
+	// Activate failure path: pin $BVM_DIR so resolution works, then break
+	// HOME so BunBinPath fails inside Activate.
+	t.Setenv("BVM_DIR", mustBVMDir(t))
+	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "")
 	if err := Use(""); err == nil {
-		t.Fatal("expected activate failure")
+		t.Fatal("expected activate failure when home is unresolvable")
 	}
-	os.Chmod(binDir, 0o755)
 
-	// EnsurePATH warning branch: fake zsh + corrupt rc file makes the
-	// profile update fail even though activation succeeded.
-	fakeBin := filepath.Join(t.TempDir(), "fakebin")
-	os.MkdirAll(fakeBin, 0o755)
-	os.WriteFile(filepath.Join(fakeBin, "zsh"), []byte("#!/bin/sh\n"), 0o755)
-	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	setupCommandEnv(t)
+	fakeInstall(t, "v1.0.0")
 
-	home := filepath.Dir(mustBVMDir(t))
+	// Profile updated -> changed message branch.
+	stub(t, &ensurePATH, func() (bool, error) { return true, nil })
 	if err := Use(""); err != nil {
 		t.Fatalf("Use() error = %v", err)
 	}
@@ -357,10 +332,8 @@ func TestUseOutputBranches(t *testing.T) {
 		t.Fatalf("active = %q", active)
 	}
 
-	// Replace the just-written rc with an unreadable directory.
-	zshrc := filepath.Join(home, ".zshrc")
-	os.Remove(zshrc)
-	os.MkdirAll(zshrc, 0o755)
+	// Profile failure -> warning branch (command still succeeds).
+	stub(t, &ensurePATH, func() (bool, error) { return false, fmt.Errorf("rc locked") })
 	if err := Use(""); err != nil {
 		t.Fatalf("profile warnings must not fail Use: %v", err)
 	}
@@ -523,12 +496,7 @@ func TestUninstallRemoveFails(t *testing.T) {
 	setupCommandEnv(t)
 	fakeInstall(t, "v1.0.0")
 
-	dir, _ := util.VersionDir("v1.0.0")
-	parent := filepath.Dir(dir)
-	os.MkdirAll(parent, 0o755)
-	os.Chmod(parent, 0o500) // versions dir readonly -> RemoveAll fails
-	defer os.Chmod(parent, 0o755)
-
+	stub(t, &util.RemoveAll, func(string) error { return fmt.Errorf("injected") })
 	if err := Uninstall("1.0.0"); err == nil {
 		t.Fatal("expected RemoveAll error")
 	}
@@ -576,6 +544,9 @@ func TestDoctorAllChecks(t *testing.T) {
 	}
 
 	quietPATH(t)
+	binDir, _ := util.BunBinDir()
+	os.MkdirAll(binDir, 0o755)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	fakeInstall(t, "v1.0.0")
 	util.Activate("v1.0.0")
 	util.SetDefaultVersion("v1.0.0")

@@ -2,12 +2,22 @@ package util
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 )
+
+// readDir is a var so tests can inject directory-listing failures portably.
+var readDir = os.ReadDir
+
+// statPath is a var so tests can inject stat failures portably.
+var statPath = os.Stat
+
+// RemoveAll is a var so tests can inject deletion failures portably.
+var RemoveAll = os.RemoveAll
 
 // ErrUnsupportedPlatform is returned when the host OS/arch has no Bun build.
 var ErrUnsupportedPlatform = errors.New("unsupported platform")
@@ -80,10 +90,18 @@ func LocalVersions() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(dir)
+	info, err := statPath(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", dir)
+	}
+
+	entries, err := readDir(dir)
 	if err != nil {
 		return nil, err
 	}
