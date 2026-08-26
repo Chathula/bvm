@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -592,31 +591,31 @@ func TestLinkDetail(t *testing.T) {
 	src := filepath.Join(tmp, "real-bin")
 	os.WriteFile(src, []byte("x"), 0o755)
 
-	// Windows binaries are copies — never a link suffix.
+	// Windows binaries are copies — never a link suffix, regardless of host.
 	if got := linkDetail("windows", src, true); got != "" {
 		t.Fatalf("windows detail = %q", got)
 	}
+	if got := linkDetail("windows", src, false); got != "" {
+		t.Fatalf("windows missing detail = %q", got)
+	}
+
 	// Missing binary -> no suffix on any OS.
 	if got := linkDetail("darwin", src, false); got != "" {
 		t.Fatalf("missing-binary detail = %q", got)
 	}
 
-	// Unix: regular file has no link target; symlink reports it.
-	if runtime.GOOS != "windows" {
-		if got := linkDetail("darwin", src, true); got != "" {
-			t.Fatalf("regular-file detail = %q", got)
-		}
-		link := filepath.Join(tmp, "linked")
-		os.Symlink(src, link)
-		want := " -> " + src
-		if got := linkDetail("darwin", link, true); got != want {
-			t.Fatalf("link detail = %q, want %q", got, want)
-		}
-	} else {
-		// Statement parity on Windows via the copy that exists there.
-		if got := linkDetail("windows", src, false); got != "" {
-			t.Fatalf("windows missing detail = %q", got)
-		}
+	// Regular files have no link target; symlinks report theirs. Both arms
+	// are exercised on every OS because goos is just a parameter here.
+	if got := linkDetail("darwin", src, true); got != "" {
+		t.Fatalf("regular-file detail = %q", got)
+	}
+	link := filepath.Join(tmp, "linked")
+	if err := os.Symlink(src, link); err != nil {
+		t.Fatalf("symlink creation failed: %v", err)
+	}
+	want := " -> " + src
+	if got := linkDetail("darwin", link, true); got != want {
+		t.Fatalf("link detail = %q, want %q", got, want)
 	}
 }
 
