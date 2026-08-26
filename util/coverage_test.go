@@ -503,12 +503,11 @@ func TestAppendLineIfMissingErrorBranches(t *testing.T) {
 		}
 	}
 
-	// OpenFile error: target directory is read-only.
-	roDir := filepath.Join(tmp, "ro")
-	os.MkdirAll(roDir, 0o755)
-	readOnly(t, roDir)
-	if _, err := appendLineIfMissing(filepath.Join(roDir, "rc"), "line"); err == nil {
-		t.Fatal("expected open error in readonly dir")
+	// OpenFile failure via the injection seam (portable — chmod is a
+	// directory no-op on Windows).
+	stub(t, &openAppend, func(string) (*os.File, error) { return nil, fmt.Errorf("injected") })
+	if _, err := appendLineIfMissing(filepath.Join(tmp, "rc"), "line"); err == nil {
+		t.Fatal("expected open error")
 	}
 }
 

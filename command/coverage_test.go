@@ -290,8 +290,6 @@ func TestDownloadErrorBranches(t *testing.T) {
 func TestEnsureDefaultSetError(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("BVM_DIR", root)
-	readOnlyDir := filepath.Join(root, "ro")
-	os.MkdirAll(readOnlyDir, 0o755)
 
 	// First call succeeds and writes the marker.
 	if err := ensureDefaultSet("v1.0.0"); err != nil {

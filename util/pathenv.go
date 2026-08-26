@@ -82,6 +82,11 @@ func exportLine(binDir string) string {
 	return `export PATH="$PATH:` + binDir + `"`
 }
 
+// openAppend is a var so tests can inject file-open failures portably.
+var openAppend = func(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+}
+
 // appendLineIfMissing writes line to path once; reports whether it wrote.
 func appendLineIfMissing(path, line string) (bool, error) {
 	data, readErr := os.ReadFile(path)
@@ -95,7 +100,7 @@ func appendLineIfMissing(path, line string) (bool, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return false, err
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := openAppend(path)
 	if err != nil {
 		return false, err
 	}
