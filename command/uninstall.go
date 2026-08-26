@@ -13,6 +13,10 @@ func Uninstall(arg string) error {
 	if err != nil {
 		return fail("%v", err)
 	}
+	dir, err := util.VersionDir(version)
+	if err != nil {
+		return fail("%v", err)
+	}
 	if !util.IsInstalled(version) {
 		return fail("version %s is not installed", version)
 	}
@@ -25,10 +29,6 @@ func Uninstall(arg string) error {
 		return fail("cannot uninstall the active version — switch first with 'bvm use <other-version>'")
 	}
 
-	dir, err := util.VersionDir(version)
-	if err != nil {
-		return fail("%v", err)
-	}
 	if err := os.RemoveAll(dir); err != nil {
 		return fail("%v", err)
 	}

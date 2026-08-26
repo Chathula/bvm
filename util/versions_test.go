@@ -1,10 +1,15 @@
 package util
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 )
@@ -158,6 +163,69 @@ func TestRemoteVersionsIgnoresNonReleaseTags(t *testing.T) {
 	got, err := ResolveTarget("latest")
 	if err != nil || got != "v1.4.0" {
 		t.Fatalf("ResolveTarget(latest) = (%q, %v), want v1.4.0", got, err)
+	}
+}
+
+func TestAPIGetGHTokenFallback(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "gh-token")
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		fmt.Fprint(w, "[]")
+	}))
+	defer srv.Close()
+
+	resp, err := APIGet(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if gotAuth != "Bearer gh-token" {
+		t.Fatalf("Authorization = %q, want Bearer gh-token", gotAuth)
+	}
+}
+
+func TestResolveTargetErrorPaths(t *testing.T) {
+	t.Run("latest with failing API", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		setReleasesAPIURL(t, srv.URL)
+		srv.Close()
+
+		if _, err := ResolveTarget("latest"); err == nil {
+			t.Fatal("expected error propagation for latest")
+		}
+	})
+	t.Run("unparseable version", func(t *testing.T) {
+		setReleasesAPIURL(t, mockTagsAPI(t, []string{"bun-v1.0.0"}).URL)
+
+		if _, err := ResolveTarget("garbage!!"); err == nil {
+			t.Fatal("expected normalize error")
+		}
+	})
+}
+
+func TestExtractBunBinarySkipsDirectoryEntries(t *testing.T) {
+	binary := BinaryNameForOS(runtime.GOOS)
+
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	w.Create("pkg/") // explicit directory entry must be skipped
+	entry, _ := w.Create("pkg/" + binary)
+	entry.Write([]byte("content"))
+	w.Close()
+
+	zipPath := filepath.Join(t.TempDir(), "withdir.zip")
+	os.WriteFile(zipPath, buf.Bytes(), 0o644)
+
+	dest := t.TempDir()
+	got, err := ExtractBunBinary(zipPath, dest)
+	if err != nil {
+		t.Fatalf("ExtractBunBinary() error = %v", err)
+	}
+	if filepath.Base(got) != binary {
+		t.Fatalf("got %q", got)
 	}
 }
 

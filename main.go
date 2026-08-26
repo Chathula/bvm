@@ -34,7 +34,7 @@ func main() {
 		},
 		{
 			Name:      "use",
-			Usage:     "Activate an installed bun version ('latest' = highest installed; defaults to .bvmrc)",
+			Usage:     "Activate an installed bun version ('latest', 'default'; falls back to .bvmrc, then the default)",
 			ArgsUsage: "[version]",
 			Action: func(c *cli.Context) error {
 				return command.Use(c.Args().First())
@@ -69,6 +69,14 @@ func main() {
 			},
 		},
 		{
+			Name:      "alias",
+			Usage:     "Set the default bun version used when no version is given",
+			ArgsUsage: "default <version>",
+			Action: func(c *cli.Context) error {
+				return command.Alias(c.Args().First(), c.Args().Get(1))
+			},
+		},
+		{
 			Name:  "doctor",
 			Usage: "Diagnose your bvm and bun installation",
 			Action: func(c *cli.Context) error {
@@ -92,7 +100,8 @@ func main() {
 	{{.Name}} install 1.1.0
 	{{.Name}} install        # installs the version from .bvmrc
 	{{.Name}} use 1.1.0
-	{{.Name}} use            # uses the version from .bvmrc
+	{{.Name}} use            # uses the version from .bvmrc, or the default
+	{{.Name}} alias default 1.1.0
 	{{.Name}} ls
 	{{.Name}} ls-remote
 	{{.Name}} uninstall 1.1.0

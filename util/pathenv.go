@@ -10,35 +10,39 @@ import (
 	"strings"
 )
 
-// EnsurePATH appends the bun bin directory to the user's shell profile when
-// it is missing from PATH. Windows is left untouched; doctor reports it.
-// Returns true when a profile was modified.
-func EnsurePATH() (bool, error) {
-	binDir, err := BunBinDir()
-	if err != nil {
-		return false, err
-	}
-	if pathContains(binDir) {
-		return false, nil
-	}
-	if runtime.GOOS == "windows" {
-		return false, nil
-	}
+type shellProfile struct {
+	shell string
+	file  string
+	line  string
+}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false, err
+// shellProfiles lists the rc files to update per OS. Windows profiles are
+// never auto-edited; doctor reports the PATH state instead.
+func shellProfiles(goos, home, binDir string) []shellProfile {
+	if goos == "windows" {
+		return nil
 	}
-
-	type profile struct{ shell, file, line string }
-	candidates := []profile{
+	return []shellProfile{
 		{"zsh", filepath.Join(home, ".zshrc"), exportLine(binDir)},
 		{"bash", filepath.Join(home, ".bashrc"), exportLine(binDir)},
 		{"fish", filepath.Join(home, ".config", "fish", "config.fish"), "fish_add_path " + binDir},
 	}
+}
+
+// EnsurePATH appends the bun bin directory to the user's shell profile when
+// it is missing from PATH. Returns true when a profile was modified.
+func EnsurePATH() (bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, err
+	}
+	binDir := filepath.Join(home, ".bun", "bin")
+	if PathContains(binDir) {
+		return false, nil
+	}
 
 	changed := false
-	for _, c := range candidates {
+	for _, c := range shellProfiles(runtime.GOOS, home, binDir) {
 		if _, err := exec.LookPath(c.shell); err != nil {
 			continue // shell not installed on this machine
 		}
@@ -59,7 +63,8 @@ func BunBinDir() (string, error) {
 	return filepath.Join(home, ".bun", "bin"), nil
 }
 
-func pathContains(dir string) bool {
+// PathContains reports whether PATH holds exactly the given entry.
+func PathContains(dir string) bool {
 	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
 		if p == dir {
 			return true
@@ -74,10 +79,12 @@ func exportLine(binDir string) string {
 
 // appendLineIfMissing writes line to path once; reports whether it wrote.
 func appendLineIfMissing(path, line string) (bool, error) {
-	if data, err := os.ReadFile(path); err == nil && strings.Contains(string(data), line) {
+	data, readErr := os.ReadFile(path)
+	switch {
+	case readErr == nil && strings.Contains(string(data), line):
 		return false, nil
-	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return false, err
+	case readErr != nil && !errors.Is(readErr, fs.ErrNotExist):
+		return false, readErr
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

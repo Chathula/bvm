@@ -12,20 +12,26 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+// Installable seams so the full install flow is unit-testable offline.
+var (
+	detectPlatformFn = util.DetectPlatform
+	downloadFile     = download
+)
+
 // Install downloads a Bun version and activates it. The version may be given
 // explicitly ("latest" allowed) or via a .bvmrc file in the current directory.
 func Install(arg string) error {
-	arg, err := resolveVersionArg(arg)
-	if err != nil {
-		return err
+	arg = resolveVersionArg(arg)
+	if arg == "" {
+		return fail("no version given and no %s found in the current directory", rcFileName)
 	}
 
-	platform, err := util.DetectPlatform()
+	platform, err := detectPlatformFn()
 	if err != nil {
 		return fail("Platform not supported: %v", err)
 	}
 
-	version, err := util.ResolveTarget(arg)
+	version, err := resolveTarget(arg)
 	if err != nil {
 		return fail("%v", err)
 	}
@@ -44,22 +50,24 @@ func Install(arg string) error {
 	}
 
 	archivePath := filepath.Join(dir, platform.AssetName())
-	if err := download(platform.DownloadURL(version), archivePath); err != nil {
+	if err := downloadFile(platform.DownloadURL(version), archivePath); err != nil {
 		os.RemoveAll(dir)
 		return fail("Failed downloading bun %s: %v", version, err)
 	}
+	defer os.Remove(archivePath) // failure paths drop the whole dir anyway
 
 	if _, err := util.ExtractBunBinary(archivePath, dir); err != nil {
 		os.RemoveAll(dir)
 		return fail("%v", err)
 	}
 
-	if err := os.Remove(archivePath); err != nil {
-		return fail("%v", err)
-	}
-
 	if err := util.Activate(version); err != nil {
 		return fail("Installed but failed to activate: %v", err)
+	}
+
+	// First ever install records itself as the default alias.
+	if err := ensureDefaultSet(version); err != nil {
+		fmt.Println(color.YellowString("Warning: could not set default alias: %v", err))
 	}
 
 	changed, err := util.EnsurePATH()
@@ -70,6 +78,19 @@ func Install(arg string) error {
 	}
 
 	fmt.Println(color.GreenString("Successfully installed and activated bun %s", version))
+	return nil
+}
+
+// ensureDefaultSet records version as the default alias, but only when no
+// default exists yet — the first install wins, later installs never steal it.
+var ensureDefaultSet = func(version string) error {
+	if def, _ := util.DefaultVersion(); def != "" {
+		return nil
+	}
+	if err := util.SetDefaultVersion(version); err != nil {
+		return err
+	}
+	fmt.Println(color.HiBlackString("Set as default bun version"))
 	return nil
 }
 
@@ -94,15 +115,14 @@ func download(url, dest string) error {
 	}
 
 	bar := progressbar.DefaultBytes(resp.ContentLength, "downloading")
-	_, err = io.Copy(io.MultiWriter(f, bar), resp.Body)
+	_, copyErr := io.Copy(io.MultiWriter(f, bar), resp.Body)
 	closeErr := f.Close()
-	if err != nil {
-		os.Remove(tmp)
-		return err
+	if copyErr == nil {
+		copyErr = closeErr
 	}
-	if closeErr != nil {
+	if copyErr != nil {
 		os.Remove(tmp)
-		return closeErr
+		return copyErr
 	}
 	return os.Rename(tmp, dest)
 }

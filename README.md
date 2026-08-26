@@ -33,7 +33,8 @@ Restart your shell afterwards so the updated `PATH` is picked up.
 
 ```text
 bvm install [version]   Install a bun version ('latest' allowed; defaults to .bvmrc)
-bvm use [version]       Activate an installed version ('latest' = highest; defaults to .bvmrc)
+bvm use [version]       Activate an installed version ('latest', 'default', or .bvmrc)
+bvm alias default <v>   Set the fallback version for 'bvm use'
 bvm list                List installed versions
 bvm list-remote         List all remote versions
 bvm uninstall <version> Remove an installed version
@@ -79,6 +80,34 @@ Rules:
 - `latest` inside `.bvmrc` works for `bvm install`
 - An explicit CLI argument always takes precedence over `.bvmrc`
 
+## Default version
+
+Like nvm's `default` alias, bvm keeps a fallback version used when no
+explicit version or `.bvmrc` applies:
+
+```sh
+bvm install latest      # first install ever → automatically set as default
+bvm alias default 1.1.0 # change the default later
+bvm use default         # activate it explicitly
+bvm use                 # outside any project: falls back to the default
+```
+
+Resolution order for `bvm use` with no argument:
+
+1. `.bvmrc` in the current directory (project pin)
+2. the **default** alias (`bvm alias default <version>`)
+3. highest installed version
+
+`bvm ls` marks both roles:
+
+```text
+* v1.4.0 (active)
+  v1.1.0 (default)
+```
+
+If the default's binary is ever uninstalled, the fallback silently moves to
+the highest installed version until you point the alias somewhere valid.
+
 ## How it works
 
 | Location | Purpose |
@@ -86,6 +115,7 @@ Rules:
 | `$BVM_DIR/versions/<vX.Y.Z>/` | Installed Bun binaries (`$BVM_DIR` defaults to `~/.bvm`) |
 | `~/.bun/bin/bun` | Symlink (unix) or copy (Windows) to the active version |
 | `$BVM_DIR/active` | Marker recording the active version |
+| `$BVM_DIR/default` | The default version alias |
 
 Because activation goes through `~/.bun/bin`, any existing scripts or tooling
 that expect Bun there keep working unchanged.
@@ -99,6 +129,7 @@ and fetched automatically.
 make build      # build to bin/
 make test       # unit tests
 make test-e2e   # end-to-end tests (downloads real Bun releases)
+make cover      # coverage report + enforces 100% (excluding main())
 make fmt vet    # formatting + static checks
 ```
 

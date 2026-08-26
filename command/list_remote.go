@@ -7,9 +7,12 @@ import (
 	"github.com/fatih/color"
 )
 
+// remoteVersions is a var so tests can stub the API offline.
+var remoteVersions = util.RemoteVersions
+
 // ListRemote prints all remote Bun versions, marking the newest as latest.
 func ListRemote() error {
-	versions, err := util.RemoteVersions()
+	versions, err := remoteVersions()
 	if err != nil {
 		return fail("%v", err)
 	}

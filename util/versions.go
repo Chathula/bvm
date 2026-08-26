@@ -39,6 +39,19 @@ func APIGet(url string) (*http.Response, error) {
 	return apiClient.Do(req)
 }
 
+// ProbeReleases reports whether the releases API is reachable, returning a
+// human-readable detail string either way (used by the doctor command).
+func ProbeReleases() (ok bool, detail string) {
+	resp, err := APIGet(releasesAPIURL + "/tags?per_page=1")
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err != nil {
+		return false, err.Error()
+	}
+	return resp.StatusCode == http.StatusOK, releasesAPIURL
+}
+
 type gitTag struct {
 	Name string `json:"name"`
 }

@@ -2,12 +2,10 @@ package command
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 
-	"github.com/chathula/bvm/config"
 	"github.com/chathula/bvm/util"
 	"github.com/fatih/color"
 )
@@ -18,8 +16,21 @@ type check struct {
 	detail string
 }
 
-// Doctor diagnoses the local bvm/bun setup and exits non-zero on failures.
-func Doctor() error {
+// probeAPI is a var so tests can stub the reachability probe offline.
+var probeAPI = util.ProbeReleases
+
+// pathHint returns guidance when the bun bin dir is off PATH; only Windows
+// users are told to edit PATH by hand (unix profiles are managed for them).
+func pathHint(goos string, onPath bool, binDir string) string {
+	if goos != "windows" || onPath {
+		return ""
+	}
+	return fmt.Sprintf("add '%s' to your PATH manually", binDir)
+}
+
+// buildDoctorChecks assembles every diagnostic, split from printing so it
+// stays unit-testable.
+func buildDoctorChecks() []check {
 	var checks []check
 
 	root, err := util.BVMDir()
@@ -27,7 +38,7 @@ func Doctor() error {
 		installed, _ := util.LocalVersions()
 		checks = append(checks, check{
 			name:   fmt.Sprintf("bvm directory (%s)", root),
-			ok:     err == nil,
+			ok:     true,
 			detail: fmt.Sprintf("%d version(s) installed", len(installed)),
 		})
 	} else {
@@ -41,11 +52,27 @@ func Doctor() error {
 	case active == "":
 		checks = append(checks, check{name: "active version", ok: true, detail: "none — run 'bvm install latest'"})
 	default:
+		ok := util.IsInstalled(active)
 		detail := active
-		if !util.IsInstalled(active) {
+		if !ok {
 			detail += " (binary missing!)"
 		}
-		checks = append(checks, check{name: "active version", ok: util.IsInstalled(active), detail: detail})
+		checks = append(checks, check{name: "active version", ok: ok, detail: detail})
+	}
+
+	def, defErr := util.DefaultVersion()
+	switch {
+	case defErr != nil:
+		checks = append(checks, check{name: "default alias", ok: false, detail: defErr.Error()})
+	case def == "":
+		checks = append(checks, check{name: "default alias", ok: true, detail: "not set — 'bvm use' falls back to highest installed"})
+	default:
+		ok := util.IsInstalled(def)
+		detail := def
+		if !ok {
+			detail += " (not installed)"
+		}
+		checks = append(checks, check{name: "default alias", ok: ok, detail: detail})
 	}
 
 	binPath, err := util.BunBinPath()
@@ -63,32 +90,19 @@ func Doctor() error {
 	}
 
 	binDir := filepath.Dir(binPath)
-	onPath := false
-	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
-		if p == binDir {
-			onPath = true
-			break
-		}
-	}
-	hint := ""
-	if runtime.GOOS == "windows" && !onPath {
-		hint = fmt.Sprintf("add '%s' to your PATH manually", binDir)
-	}
-	checks = append(checks, check{name: "~/.bun/bin on PATH", ok: onPath, detail: hint})
+	onPath := util.PathContains(binDir)
+	checks = append(checks, check{name: "~/.bun/bin on PATH", ok: onPath, detail: pathHint(runtime.GOOS, onPath, binDir)})
 
-	resp, err := util.APIGet(config.BunReleasesAPIURL + "/tags?per_page=1")
-	apiOK := err == nil && resp.StatusCode == http.StatusOK
-	if resp != nil {
-		resp.Body.Close()
-	}
-	detail := config.BunReleasesAPIURL
-	if err != nil {
-		detail = err.Error()
-	}
-	checks = append(checks, check{name: "releases API reachable", ok: apiOK, detail: detail})
+	apiOK, apiDetail := probeAPI()
+	checks = append(checks, check{name: "releases API reachable", ok: apiOK, detail: apiDetail})
 
+	return checks
+}
+
+// Doctor diagnoses the local bvm/bun setup and exits non-zero on failures.
+func Doctor() error {
 	failed := 0
-	for _, c := range checks {
+	for _, c := range buildDoctorChecks() {
 		mark := color.GreenString("✔")
 		if !c.ok {
 			mark = color.RedString("✘")

@@ -10,12 +10,7 @@ import (
 // Use activates a locally installed Bun version. The version may be given
 // explicitly, be "latest" (highest installed), or come from a .bvmrc file.
 func Use(arg string) error {
-	arg, err := resolveVersionArg(arg)
-	if err != nil {
-		return err
-	}
-
-	version, err := resolveLocal(arg)
+	version, err := resolveLocal(resolveVersionArg(arg))
 	if err != nil {
 		return fail("%v", err)
 	}
@@ -43,9 +38,28 @@ func resolveLocal(arg string) (string, error) {
 	if len(installed) == 0 {
 		return "", fmt.Errorf("no versions installed yet — run 'bvm install latest'")
 	}
+	highest := installed[len(installed)-1]
 
-	if arg == "" || arg == "latest" {
-		return installed[len(installed)-1], nil
+	switch arg {
+	case "":
+		// No explicit version and no .bvmrc: fall back to the default
+		// alias, then to the highest installed version.
+		def, _ := util.DefaultVersion()
+		if def != "" && util.IsInstalled(def) {
+			return def, nil
+		}
+		return highest, nil
+	case "latest":
+		return highest, nil
+	case "default":
+		def, _ := util.DefaultVersion()
+		if def == "" {
+			return "", fmt.Errorf("no default version set — run 'bvm alias default <version>'")
+		}
+		if !util.IsInstalled(def) {
+			return "", fmt.Errorf("default version %s is not installed — run 'bvm install'", def)
+		}
+		return def, nil
 	}
 
 	version, err := util.NormalizeVersion(arg)

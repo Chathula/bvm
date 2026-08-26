@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/chathula/bvm/util"
 	"github.com/fatih/color"
@@ -22,12 +23,29 @@ func List() error {
 	if err != nil {
 		return fail("%v", err)
 	}
+	def, _ := util.DefaultVersion()
+
 	for _, version := range versions {
+		marker := "  "
+		name := version
 		if version == active {
-			fmt.Printf("* %s %s\n", color.GreenString(version), color.New(color.FgHiBlack).Sprint("(active)"))
-		} else {
-			fmt.Printf("  %s\n", version)
+			marker = "*"
+			name = color.GreenString(version)
 		}
+
+		var tags []string
+		if version == active {
+			tags = append(tags, "active")
+		}
+		if version == def && def != "" {
+			tags = append(tags, "default")
+		}
+		suffix := ""
+		if len(tags) > 0 {
+			suffix = color.New(color.FgHiBlack).Sprintf("(%s)", strings.Join(tags, ", "))
+		}
+
+		fmt.Printf("%s %s %s\n", marker, name, suffix)
 	}
 	return nil
 }

@@ -143,6 +143,8 @@ func TestE2EFlow(t *testing.T) {
 		if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
 			t.Fatalf("activated bun --version = %q, want %q", got, strings.TrimPrefix(pinnedVersion, "v"))
 		}
+		// First ever install must record itself as the default alias.
+		assertDefaultAlias(t, pinnedVersion)
 	})
 
 	t.Run("InstallLatestAndActivate", func(t *testing.T) {
@@ -153,6 +155,8 @@ func TestE2EFlow(t *testing.T) {
 		if got := bunVersionOutput(t); got != want {
 			t.Fatalf("after 'install latest', bun --version = %q, want %q", got, want)
 		}
+		// A later install must not steal the default.
+		assertDefaultAlias(t, pinnedVersion)
 	})
 
 	t.Run("UseSwitchesActiveVersion", func(t *testing.T) {
@@ -219,6 +223,26 @@ func TestE2EFlow(t *testing.T) {
 		requireSuccess(t, out, err, "bvm install with .bvmrc (already installed)")
 	})
 
+	t.Run("DefaultAliasFallback", func(t *testing.T) {
+		out, err := run(t, "alias", "default", pinnedVersion)
+		requireSuccess(t, out, err, "bvm alias default")
+
+		// Plain 'bvm use' outside any project must fall back to the default.
+		fresh := filepath.Join(homeDir, "fresh-project")
+		os.MkdirAll(fresh, 0o755)
+		out, err = runIn(t, fresh, "use")
+		requireSuccess(t, out, err, "bvm use with default alias")
+		if got := bunVersionOutput(t); got != strings.TrimPrefix(pinnedVersion, "v") {
+			t.Fatalf("after 'bvm use' via default alias, bun --version = %q", got)
+		}
+
+		out, err = run(t, "ls")
+		requireSuccess(t, out, err, "bvm ls")
+		if !strings.Contains(out, "default") {
+			t.Fatalf("'ls' output missing default marker:\n%s", out)
+		}
+	})
+
 	t.Run("InvalidVersionsFailCleanly", func(t *testing.T) {
 		out, err := run(t, "install", "not-a-version")
 		requireFailure(t, out, err, "install not-a-version")
@@ -233,6 +257,18 @@ func utilIsInstalled(t *testing.T, version string) bool {
 	}
 	_, err := os.Stat(filepath.Join(bvmRoot, "versions", version, binary))
 	return err == nil
+}
+
+// assertDefaultAlias checks $BVM_DIR/default points at the expected version.
+func assertDefaultAlias(t *testing.T, want string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(bvmRoot, "default"))
+	if err != nil {
+		t.Fatalf("default alias file missing: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != want {
+		t.Fatalf("default alias = %q, want %q", got, want)
+	}
 }
 
 func nonEmptyLines(s string) []string {

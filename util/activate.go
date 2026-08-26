@@ -33,13 +33,12 @@ func ActiveVersion() (string, error) {
 // unix, copy on Windows (symlinks need elevated rights there) — and records
 // it in $BVM_DIR/active.
 func Activate(version string) error {
-	if !IsInstalled(version) {
-		return fmt.Errorf("version %s is not installed locally", version)
-	}
-
 	srcDir, err := VersionDir(version)
 	if err != nil {
 		return err
+	}
+	if !IsInstalled(version) {
+		return fmt.Errorf("version %s is not installed locally", version)
 	}
 	dst, err := BunBinPath()
 	if err != nil {
@@ -53,14 +52,23 @@ func Activate(version string) error {
 	}
 
 	src := filepath.Join(srcDir, BinaryName())
-	if runtime.GOOS == "windows" {
-		if err := copyFile(src, dst); err != nil {
-			return err
-		}
-	} else if err := os.Symlink(src, dst); err != nil {
+	if err := exposeBinary(src, dst, runtime.GOOS != "windows"); err != nil {
 		return err
 	}
+	return recordActive(version)
+}
 
+// exposeBinary links or copies src to dst depending on useSymlink.
+// Split from Activate so both strategies stay testable on every OS.
+func exposeBinary(src, dst string, useSymlink bool) error {
+	if !useSymlink {
+		return copyFile(src, dst)
+	}
+	return os.Symlink(src, dst)
+}
+
+// recordActive writes the active-version marker under $BVM_DIR.
+func recordActive(version string) error {
 	root, err := BVMDir()
 	if err != nil {
 		return err
@@ -73,15 +81,15 @@ func Activate(version string) error {
 
 // Deactivate removes the exposed bun binary and the active-version marker.
 func Deactivate() error {
+	root, err := BVMDir()
+	if err != nil {
+		return err
+	}
 	dst, err := BunBinPath()
 	if err != nil {
 		return err
 	}
 	if err := os.RemoveAll(dst); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	root, err := BVMDir()
-	if err != nil {
 		return err
 	}
 	err = os.Remove(filepath.Join(root, activeMarker))
