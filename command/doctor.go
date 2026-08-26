@@ -28,6 +28,18 @@ func pathHint(goos string, onPath bool, binDir string) string {
 	return fmt.Sprintf("add '%s' to your PATH manually", binDir)
 }
 
+// linkDetail appends the symlink target for diagnostics. Unix-only: the
+// activated binary is a plain copy on Windows.
+func linkDetail(goos, binPath string, exists bool) string {
+	if goos == "windows" || !exists {
+		return ""
+	}
+	if target, err := os.Readlink(binPath); err == nil {
+		return " -> " + target
+	}
+	return ""
+}
+
 // buildDoctorChecks assembles every diagnostic, split from printing so it
 // stays unit-testable.
 func buildDoctorChecks() []check {
@@ -80,12 +92,7 @@ func buildDoctorChecks() []check {
 		checks = append(checks, check{name: "bun binary link", ok: false, detail: err.Error()})
 	} else {
 		_, statErr := os.Stat(binPath)
-		detail := binPath
-		if runtime.GOOS != "windows" && statErr == nil {
-			if target, linkErr := os.Readlink(binPath); linkErr == nil {
-				detail += " -> " + target
-			}
-		}
+		detail := binPath + linkDetail(runtime.GOOS, binPath, statErr == nil)
 		checks = append(checks, check{name: "bun binary link", ok: statErr == nil, detail: detail})
 	}
 

@@ -87,9 +87,15 @@ var openAppend = func(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 }
 
+// mkdirAll is a var so tests can inject directory-creation failures portably.
+var mkdirAll = os.MkdirAll
+
+// readFile is a var so tests can inject read failures portably.
+var readFile = os.ReadFile
+
 // appendLineIfMissing writes line to path once; reports whether it wrote.
 func appendLineIfMissing(path, line string) (bool, error) {
-	data, readErr := os.ReadFile(path)
+	data, readErr := readFile(path)
 	switch {
 	case readErr == nil && strings.Contains(string(data), line):
 		return false, nil
@@ -97,7 +103,7 @@ func appendLineIfMissing(path, line string) (bool, error) {
 		return false, readErr
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := mkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return false, err
 	}
 	f, err := openAppend(path)

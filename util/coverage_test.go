@@ -21,15 +21,6 @@ func breakHome(t *testing.T) {
 	t.Setenv("USERPROFILE", "")
 }
 
-// readOnly marks a path read-only for the duration of the test.
-func readOnly(t *testing.T, path string) {
-	t.Helper()
-	if err := os.Chmod(path, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chmod(path, 0o755) })
-}
-
 // --- paths.go ---
 
 func TestPathHelpersFailWithoutHome(t *testing.T) {
@@ -474,41 +465,34 @@ func TestShellProfilesByOS(t *testing.T) {
 }
 
 func TestAppendLineIfMissingErrorBranches(t *testing.T) {
-	tmp := t.TempDir()
-
 	// Read error other than NotExist: target path is a directory.
+	tmp := t.TempDir()
 	dirPath := filepath.Join(tmp, "im-a-dir")
 	os.MkdirAll(dirPath, 0o755)
 	if _, err := appendLineIfMissing(dirPath, "line"); err == nil {
 		t.Fatal("expected read error for directory target")
 	}
 
-	// MkdirAll error — platform-divergent, so each OS exercises the branch
-	// with its native failure mode:
-	//   unix: read yields EISDIR-style errors only for dirs, so use a
-	//         read-only parent; windows maps path-through-file to
-	//         ErrNotExist and falls through to MkdirAll, so use a file.
-	if runtime.GOOS == "windows" {
-		parent := filepath.Join(tmp, "parent-file")
-		os.WriteFile(parent, []byte("x"), 0o644)
-		if _, err := appendLineIfMissing(filepath.Join(parent, "rc"), "line"); err == nil {
-			t.Fatal("expected mkdir error under file parent")
+	// Remaining arms via injection — each in a subtest so seam cleanup
+	// happens before the next scenario.
+	t.Run("injected read failure", func(t *testing.T) {
+		stub(t, &readFile, func(string) ([]byte, error) { return nil, fmt.Errorf("injected") })
+		if _, err := appendLineIfMissing(filepath.Join(tmp, "rc"), "line"); err == nil {
+			t.Fatal("expected injected read error")
 		}
-	} else {
-		roParent := filepath.Join(tmp, "ro")
-		os.MkdirAll(roParent, 0o755)
-		readOnly(t, roParent)
-		if _, err := appendLineIfMissing(filepath.Join(roParent, "sub", "rc"), "line"); err == nil {
-			t.Fatal("expected mkdir error under readonly parent")
+	})
+	t.Run("injected mkdir failure", func(t *testing.T) {
+		stub(t, &mkdirAll, func(string, os.FileMode) error { return fmt.Errorf("injected") })
+		if _, err := appendLineIfMissing(filepath.Join(tmp, "rc"), "line"); err == nil {
+			t.Fatal("expected mkdir error")
 		}
-	}
-
-	// OpenFile failure via the injection seam (portable — chmod is a
-	// directory no-op on Windows).
-	stub(t, &openAppend, func(string) (*os.File, error) { return nil, fmt.Errorf("injected") })
-	if _, err := appendLineIfMissing(filepath.Join(tmp, "rc"), "line"); err == nil {
-		t.Fatal("expected open error")
-	}
+	})
+	t.Run("injected open failure", func(t *testing.T) {
+		stub(t, &openAppend, func(string) (*os.File, error) { return nil, fmt.Errorf("injected") })
+		if _, err := appendLineIfMissing(filepath.Join(tmp, "rc"), "line"); err == nil {
+			t.Fatal("expected open error")
+		}
+	})
 }
 
 func TestApplyProfilesBranches(t *testing.T) {
@@ -561,6 +545,19 @@ func TestPathContainsExactMatchOnly(t *testing.T) {
 	}
 	if PathContains("/bb") {
 		t.Fatal("/bb must not match /b")
+	}
+}
+
+// TestEnsurePATHReachesProfiles drives EnsurePATH past its early returns on
+// every OS: home resolvable, bin dir absent from PATH.
+func TestEnsurePATHReachesProfiles(t *testing.T) {
+	isolateEnv(t)
+	os.MkdirAll(filepath.Join(root2(t), ".bun", "bin"), 0o755)
+
+	// On unix, installed shells may get their rc files updated inside the
+	// isolated HOME; on Windows profiles are a no-op. Either way no error.
+	if _, err := EnsurePATH(); err != nil {
+		t.Fatalf("EnsurePATH() error = %v", err)
 	}
 }
 
