@@ -129,7 +129,7 @@ and fetched automatically.
 make build      # build to bin/
 make test       # unit tests
 make test-e2e   # end-to-end tests (downloads real Bun releases)
-make cover      # coverage report + enforces 100% (excluding main())
+make cover      # coverage report + enforces a 90% floor (excluding main())
 make fmt vet    # formatting + static checks
 ```
 
