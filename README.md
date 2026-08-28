@@ -10,7 +10,7 @@
 
 - Install any published Bun version (`bvm install 1.1.0`, `bvm install latest`)
 - nvm-style **default version**: new shells and unpinned directories use it
-- **Per-project versions** via `.bvmrc` (`bvm use 1.4.0` pins the current project)
+- **Per-project versions** via an optional `.bvmrc` (`bvm use --save 1.4.0`)
 - Works natively on **Linux, macOS (Intel & Apple Silicon) and Windows**
 - Zero runtime dependencies — a single static binary
 
@@ -85,7 +85,8 @@ the `bvm` binary somewhere on your `PATH`.
 
 ```text
 bvm install [version]   Install a bun version ('latest' allowed; defaults to .bvmrc)
-bvm use [version]       Pin a version to the current directory; 'default' clears the pin
+bvm use [--save] [v]    Show what applies here; '--save <v>' pins this project (.bvmrc)
+bvm use default         Remove this directory's pin (if any)
 bvm alias default <v>   Set the version used outside pinned projects
 bvm list                List installed versions
 bvm list-remote         List all remote versions
@@ -101,8 +102,8 @@ Examples:
 ```sh
 bvm install latest      # first install ever -> becomes the default
 bvm install 1.1.0       # installs a specific version
-bvm use 1.1.0           # pins 1.1.0 to the current project (.bvmrc)
 bvm use                 # what version applies in this directory, and why
+bvm use --save 1.1.0    # pins 1.1.0 to the current project (creates .bvmrc)
 bvm use default         # remove this project's pin
 bvm ls                  # * marks the default, (this project) marks the pin
 bvm doctor              # verify shim, PATH, resolution, API reachability
@@ -118,7 +119,8 @@ bvm works like nvm's default alias, implemented through a **shim**: the
 binary to run on every invocation.
 
 1. The nearest `.bvmrc` walking up from your current directory
-   (project pin — created by `bvm use <version>`)
+   (project pin — **always opt-in**, created only by `bvm use --save <version>`
+   or written by hand)
 2. The **default** alias (`bvm alias default <version>`)
 3. Nothing — you get a helpful error instead of a mystery binary
 
@@ -126,8 +128,15 @@ Consequences (matching nvm's mental model):
 
 - The **first version you install becomes the default**
 - New shells and unpinned directories always run the **default** version
-- `bvm use` only affects the **current project**, never other directories
+- `bvm use` **never creates files** — it reports what applies here; only
+  `bvm use --save <version>` writes a `.bvmrc`, and only when you ask
+- `.bvmrc` is completely optional: commit it to share a project's Bun
+  version, or skip it entirely and rely on the default
 - `bun` works everywhere: no shell hooks or PATH juggling per project
+
+A `.bvmrc` follows the same rules everywhere: blank lines and `#` comments
+are ignored, the first version line wins, and `1.4.0` / `v1.4.0` are
+equivalent. `bvm install` with no argument reads it too.
 
 `bvm ls` shows both roles:
 

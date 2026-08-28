@@ -61,8 +61,8 @@ func TestUseReadsRCWithAndWithoutVPrefix(t *testing.T) {
 			fakeInstall(t, "v1.4.0")
 			t.Chdir(t.TempDir())
 
-			if err := Use(rcValue); err != nil {
-				t.Fatalf("Use(%q) error = %v", rcValue, err)
+			if err := Use(true, rcValue); err != nil {
+				t.Fatalf("Use(true, %q) error = %v", rcValue, err)
 			}
 			_, pin := util.FindRCHere()
 			if pin != "v1.4.0" {

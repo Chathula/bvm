@@ -49,11 +49,18 @@ func main() {
 			},
 		},
 		{
-			Name:      "use",
-			Usage:     "Pin a bun version to the current directory (.bvmrc); 'default' clears the pin; no arg shows what applies here",
+			Name:  "use",
+			Usage: "Show which bun version applies here; with a version, explain how to apply it ('--save' pins it to this directory)",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:    "save",
+					Aliases: []string{"s"},
+					Usage:   "pin the version to this directory by writing .bvmrc",
+				},
+			},
 			ArgsUsage: "[version]",
 			Action: func(c *cli.Context) error {
-				return command.Use(c.Args().First())
+				return command.Use(c.Bool("save"), c.Args().First())
 			},
 		},
 		{

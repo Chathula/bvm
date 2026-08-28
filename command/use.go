@@ -11,11 +11,10 @@ import (
 // ensureShim is a var so tests can stub shim installation.
 var ensureShim = util.EnsureShim
 
-// Use pins a bun version to the current directory by writing .bvmrc —
-// nvm-style "active in this project". 'default' removes the local pin so
-// the directory follows the global default again; no argument reports the
-// version that currently applies here.
-func Use(arg string) error {
+// Use reports which version applies to the current directory, or changes
+// it: 'default' removes an existing .bvmrc pin, and --save writes one.
+// The pin file is always opt-in — it is never created implicitly.
+func Use(save bool, arg string) error {
 	arg = strings.TrimSpace(arg)
 
 	if arg == "" {
@@ -44,14 +43,27 @@ func Use(arg string) error {
 		return fail("version %s is not installed — run 'bvm install %s'", version, version)
 	}
 
-	if err := util.WriteRC(version); err != nil {
-		return fail("%v", err)
-	}
-	if err := ensureShim(); err != nil {
-		fmt.Println(color.YellowString("Warning: could not install the bun shim: %v", err))
+	if save {
+		if err := util.WriteRC(version); err != nil {
+			return fail("%v", err)
+		}
+		if err := ensureShim(); err != nil {
+			fmt.Println(color.YellowString("Warning: could not install the bun shim: %v", err))
+		}
+		fmt.Println(color.GreenString("bun %s pinned to this directory (%s)", version, util.RCFileName()))
+		return nil
 	}
 
-	fmt.Println(color.GreenString("bun %s pinned to this directory (%s)", version, util.RCFileName()))
+	def, _ := util.DefaultVersion()
+	if version == def {
+		fmt.Println(color.GreenString("bun %s is already the default — it applies here unless a %s overrides it.", version, util.RCFileName()))
+		return nil
+	}
+	fmt.Println(color.YellowString("bun %s is installed but applies nowhere by default.", version))
+	fmt.Println("To make it apply in this project, pin it:")
+	fmt.Printf("  bvm use --save %s      # writes %s in this directory\n", version, util.RCFileName())
+	fmt.Println("Or make it the global default:")
+	fmt.Printf("  bvm alias default %s\n", version)
 	return nil
 }
 

@@ -188,7 +188,13 @@ func TestE2EFlow(t *testing.T) {
 		os.MkdirAll(project, 0o755)
 
 		out, err := runIn(t, project, "use", pinnedVersion)
-		requireSuccess(t, out, err, "bvm use "+pinnedVersion)
+		requireSuccess(t, out, err, "bvm use (no --save) must not create .bvmrc")
+		if _, err := os.Stat(filepath.Join(project, ".bvmrc")); !os.IsNotExist(err) {
+			t.Fatal(".bvmrc created without --save")
+		}
+
+		out, err = runIn(t, project, "use", "--save", pinnedVersion)
+		requireSuccess(t, out, err, "bvm use --save "+pinnedVersion)
 
 		// Project resolves to the pin; everywhere else keeps the default.
 		if got := bunVersionAt(t, project); got != strings.TrimPrefix(pinnedVersion, "v") {
@@ -206,7 +212,7 @@ func TestE2EFlow(t *testing.T) {
 		}
 
 		// Re-pin for the ls marker check.
-		if out, err := runIn(t, project, "use", pinnedVersion); err != nil {
+		if out, err := runIn(t, project, "use", "--save", pinnedVersion); err != nil {
 			t.Fatalf("re-pin failed: %v\n%s", err, out)
 		}
 	})
