@@ -38,7 +38,7 @@ func TestRunShimArms(t *testing.T) {
 		t.Chdir(t.TempDir())
 
 		var got string
-		stub(t, &execBunFn, func(bin string) error {
+		stub(t, &execProcessFn, func(bin string, args []string) error {
 			got = bin
 			return errors.New("exec-replaced")
 		})
@@ -66,14 +66,14 @@ func TestRunShimExitPath(t *testing.T) {
 		gotMsg = msg
 		exited = true
 	})
-	stub(t, &execBunFn, func(string) error { return nil }) // success: no exit
+	stub(t, &execProcessFn, func(string, []string) error { return nil }) // success: no exit
 
 	RunShim()
 	if exited {
 		t.Fatalf("unexpected exit on success: %s", gotMsg)
 	}
 
-	stub(t, &execBunFn, func(string) error { return errors.New("boom") })
+	stub(t, &execProcessFn, func(string, []string) error { return errors.New("boom") })
 	RunShim()
 	if !exited || gotMsg != "boom" {
 		t.Fatalf("exitWithError = (%q, %v)", gotMsg, exited)

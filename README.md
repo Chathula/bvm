@@ -87,6 +87,8 @@ the `bvm` binary somewhere on your `PATH`.
 bvm install [version]   Install a bun version ('latest' allowed; defaults to .bvmrc)
 bvm use [--save] [v]    Show what applies here; '--save <v>' pins this project (.bvmrc)
 bvm use default         Remove this directory's pin (if any)
+bvm use --reset         Clear a session override ($BVM_VERSION)
+bvm exec <v> [args]     Run a one-off command with a specific version
 bvm alias default <v>   Set the version used outside pinned projects
 bvm list                List installed versions
 bvm list-remote         List all remote versions
@@ -118,11 +120,13 @@ bvm works like nvm's default alias, implemented through a **shim**: the
 `bun` command on your PATH is bvm itself, and it resolves which real Bun
 binary to run on every invocation.
 
-1. The nearest `.bvmrc` walking up from your current directory
+1. `$BVM_VERSION` if set — a **temporary, session-only** override
+   (see below)
+2. The nearest `.bvmrc` walking up from your current directory
    (project pin — **always opt-in**, created only by `bvm use --save <version>`
    or written by hand)
-2. The **default** alias (`bvm alias default <version>`)
-3. Nothing — you get a helpful error instead of a mystery binary
+3. The **default** alias (`bvm alias default <version>`)
+4. Nothing — you get a helpful error instead of a mystery binary
 
 Consequences (matching nvm's mental model):
 
@@ -137,6 +141,32 @@ Consequences (matching nvm's mental model):
 A `.bvmrc` follows the same rules everywhere: blank lines and `#` comments
 are ignored, the first version line wins, and `1.4.0` / `v1.4.0` are
 equivalent. `bvm install` with no argument reads it too.
+
+### Temporary version switching (nvm-style `use`)
+
+Like `nvm use`, you can switch versions for your **current terminal session**
+only — files, other terminals and other projects are untouched:
+
+```sh
+bvm use 1.4.0        # this shell now runs 1.4.0 (sets $BVM_VERSION)
+bvm use --reset      # back to .bvmrc / default
+bvm use default      # clears the override AND removes this project's pin
+```
+
+When you close the shell (or `unset BVM_VERSION`), the project's `.bvmrc`
+— or the default — applies again, exactly like coming back to a project
+under nvm.
+
+For one-off commands without changing your session:
+
+```sh
+bvm exec 1.1.0 bun test
+```
+
+> This works through the small `bvm()` shell function the installer adds to
+> your profile (bash/zsh/fish): the function runs inside your shell and sets
+> `$BVM_VERSION`, which the shim checks first. Existing installs can re-run
+> the installer to pick it up, or add the snippet to your profile manually.
 
 `bvm ls` shows both roles:
 

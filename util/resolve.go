@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -56,9 +57,18 @@ func FindRCHere() (path, version string) {
 }
 
 // ResolveVersion determines which bun version applies to the current
-// directory: the nearest .bvmrc walking up, otherwise the default alias.
-// Returns the version and where it came from ("project pin" / "default").
+// directory, in priority order: the BVM_VERSION environment variable
+// (temporary session override), the nearest .bvmrc walking up, then the
+// default alias.
 func ResolveVersion() (version, source string, err error) {
+	if override := strings.TrimSpace(os.Getenv("BVM_VERSION")); override != "" {
+		v, err := sessionOverride(override)
+		if err != nil {
+			return "", "", err
+		}
+		return v, fmt.Sprintf("session override (BVM_VERSION=%s)", v), nil
+	}
+
 	if rcPath, v := FindRCHere(); rcPath != "" {
 		if !IsInstalled(v) {
 			return "", "", fmt.Errorf("bun %s is pinned in %s but not installed — run 'bvm install %s'", v, rcPath, v)
@@ -77,6 +87,29 @@ func ResolveVersion() (version, source string, err error) {
 		return "", "", fmt.Errorf("default bun %s is not installed — run 'bvm install %s'", def, def)
 	}
 	return def, "default", nil
+}
+
+// sessionOverride validates the BVM_VERSION value: "latest" resolves to the
+// highest installed version, anything else must be installed.
+func sessionOverride(v string) (string, error) {
+	if strings.EqualFold(v, "latest") {
+		installed, err := LocalVersions()
+		if err != nil {
+			return "", err
+		}
+		if len(installed) == 0 {
+			return "", errors.New("BVM_VERSION=latest but no versions are installed")
+		}
+		return installed[len(installed)-1], nil
+	}
+	norm, err := NormalizeVersion(v)
+	if err != nil {
+		return "", fmt.Errorf("invalid BVM_VERSION %q", v)
+	}
+	if !IsInstalled(norm) {
+		return "", fmt.Errorf("BVM_VERSION=%s is not installed — run 'bvm install %s' or unset BVM_VERSION", norm, norm)
+	}
+	return norm, nil
 }
 
 // RCFileName is the name of the per-project pin file (".bvmrc").

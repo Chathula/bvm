@@ -12,13 +12,20 @@ import (
 var ensureShim = util.EnsureShim
 
 // Use reports which version applies to the current directory, or changes
-// it: 'default' removes an existing .bvmrc pin, and --save writes one.
-// The pin file is always opt-in — it is never created implicitly.
-func Use(save bool, arg string) error {
+// it: 'default' removes an existing .bvmrc pin, --reset explains how to
+// clear a session override, and --save writes one. The pin file is always
+// opt-in — it is never created implicitly.
+func Use(reset, save bool, arg string) error {
 	arg = strings.TrimSpace(arg)
 
 	if arg == "" {
 		return showResolution()
+	}
+
+	if reset {
+		fmt.Println("Session overrides live in the BVM_VERSION environment variable.")
+		fmt.Println("Clear it in your shell:  unset BVM_VERSION   (fish: set -e BVM_VERSION)")
+		return nil
 	}
 
 	if arg == "default" {
@@ -56,13 +63,15 @@ func Use(save bool, arg string) error {
 
 	def, _ := util.DefaultVersion()
 	if version == def {
-		fmt.Println(color.GreenString("bun %s is already the default — it applies here unless a %s overrides it.", version, util.RCFileName()))
+		fmt.Println(color.GreenString("bun %s is already the default — it applies here unless a %s or $BVM_VERSION overrides it.", version, util.RCFileName()))
 		return nil
 	}
 	fmt.Println(color.YellowString("bun %s is installed but applies nowhere by default.", version))
-	fmt.Println("To make it apply in this project, pin it:")
+	fmt.Println("To pin it to this project:")
 	fmt.Printf("  bvm use --save %s      # writes %s in this directory\n", version, util.RCFileName())
-	fmt.Println("Or make it the global default:")
+	fmt.Println("To use it temporarily in this shell session (nvm-style):")
+	fmt.Printf("  bvm use %s             # sets $BVM_VERSION until you close the shell\n", version)
+	fmt.Println("To make it the global default:")
 	fmt.Printf("  bvm alias default %s\n", version)
 	return nil
 }

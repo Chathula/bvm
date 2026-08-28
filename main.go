@@ -57,10 +57,14 @@ func main() {
 					Aliases: []string{"s"},
 					Usage:   "pin the version to this directory by writing .bvmrc",
 				},
+				&cli.BoolFlag{
+					Name:  "reset",
+					Usage: "show how to clear a session override ($BVM_VERSION)",
+				},
 			},
 			ArgsUsage: "[version]",
 			Action: func(c *cli.Context) error {
-				return command.Use(c.Bool("save"), c.Args().First())
+				return command.Use(c.Bool("reset"), c.Bool("save"), c.Args().First())
 			},
 		},
 		{
@@ -77,6 +81,19 @@ func main() {
 			Aliases: []string{"ls-remote"},
 			Action: func(c *cli.Context) error {
 				return command.ListRemote()
+			},
+		},
+		{
+			Name:            "exec",
+			Usage:           "Run a one-off command with a specific bun version: bvm exec <version> [args...]",
+			SkipFlagParsing: true,
+			ArgsUsage:       "<version> [args...]",
+			Action: func(c *cli.Context) error {
+				args := c.Args().Slice()
+				if len(args) == 0 {
+					return fmt.Errorf("require <%s> and a command, e.g. 'bvm exec 1.1.0 bun test'", color.YellowString("version"))
+				}
+				return command.Exec(args[0], args[1:])
 			},
 		},
 		{

@@ -8,8 +8,7 @@ import (
 	"syscall"
 )
 
-// execBun replaces the current process with the resolved bun binary (unix).
-func execBun(bin string) error {
-	argv0 := filepath.Base(bin)
-	return syscall.Exec(bin, append([]string{argv0}, os.Args[1:]...), os.Environ())
+// execProcess replaces the current process with bin and args (unix).
+func execProcess(bin string, args []string) error {
+	return syscall.Exec(bin, append([]string{filepath.Base(bin)}, args...), os.Environ())
 }

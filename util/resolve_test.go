@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -116,6 +117,64 @@ func TestFindRCHereHandlesGetwdFailure(t *testing.T) {
 
 	if path, version := FindRCHere(); path != "" || version != "" {
 		t.Fatalf("FindRCHere() = (%q, %q), want empty on failure", path, version)
+	}
+}
+
+func TestResolveVersionSessionOverride(t *testing.T) {
+	isolateEnv(t)
+	fakeInstall(t, "v1.3.1", "a")
+	fakeInstall(t, "v1.4.0", "b")
+	SetDefaultVersion("v1.4.0")
+
+	project := filepath.Join(root2(t), "project")
+	os.MkdirAll(project, 0o755)
+	t.Chdir(project)
+	os.WriteFile(filepath.Join(project, rcFileName), []byte("v1.3.1\n"), 0o644)
+
+	// Session override beats the project pin and the default.
+	t.Setenv("BVM_VERSION", "v1.4.0")
+	version, source, err := ResolveVersion()
+	if err != nil || version != "v1.4.0" {
+		t.Fatalf("ResolveVersion() = (%q, %v), want session override v1.4.0", version, err)
+	}
+	if !strings.Contains(source, "session") {
+		t.Fatalf("source = %q, want session mention", source)
+	}
+
+	// Unprefixed form and "latest" work too.
+	t.Setenv("BVM_VERSION", "1.3.1")
+	if version, _, _ = ResolveVersion(); version != "v1.3.1" {
+		t.Fatalf("unprefixed override = %q", version)
+	}
+	t.Setenv("BVM_VERSION", "latest")
+	if version, _, _ = ResolveVersion(); version != "v1.4.0" {
+		t.Fatalf("'latest' override = %q, want highest installed v1.4.0", version)
+	}
+
+	// Failures are loud: explicit intent should never silently fall back.
+	t.Setenv("BVM_VERSION", "v9.9.9")
+	if _, _, err := ResolveVersion(); err == nil {
+		t.Fatal("expected error for uninstalled override")
+	}
+	t.Setenv("BVM_VERSION", "bogus!!")
+	if _, _, err := ResolveVersion(); err == nil {
+		t.Fatal("expected error for invalid override")
+	}
+
+	// "latest" with LocalVersions failure propagates.
+	stub(t, &readDir, func(string) ([]os.DirEntry, error) { return nil, fmt.Errorf("injected") })
+	t.Setenv("BVM_VERSION", "latest")
+	if _, _, err := ResolveVersion(); err == nil {
+		t.Fatal("expected LocalVersions failure to propagate")
+	}
+	t.Setenv("BVM_VERSION", "")
+
+	// "latest" with nothing installed errors.
+	isolateEnv(t)
+	t.Chdir(t.TempDir())
+	t.Setenv("BVM_VERSION", "latest")
+	if _, _, err := ResolveVersion(); err == nil {
+		t.Fatal("expected latest-with-no-versions error")
 	}
 }
 

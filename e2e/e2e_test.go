@@ -72,6 +72,11 @@ func runIn(t *testing.T, dir string, args ...string) (string, error) {
 // runBun invokes the installed bun shim the way a user's shell would.
 func runBun(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
+	return runBunEnv(t, dir, nil, args...)
+}
+
+func runBunEnv(t *testing.T, dir string, extraEnv []string, args ...string) (string, error) {
+	t.Helper()
 	name := "bun"
 	if runtime.GOOS == "windows" {
 		name = "bun.exe"
@@ -79,6 +84,7 @@ func runBun(t *testing.T, dir string, args ...string) (string, error) {
 	cmd := exec.Command(filepath.Join(homeDir, ".bun", "bin", name), args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "BVM_DIR="+bvmRoot, "HOME="+homeDir, "USERPROFILE="+homeDir)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	return runWithTimeout(cmd, time.Minute)
 }
 
@@ -225,6 +231,31 @@ func TestE2EFlow(t *testing.T) {
 				t.Fatalf(".bvmrc %q resolved to %q", rcValue, got)
 			}
 		}
+	})
+
+	t.Run("SessionOverrideBeatsPinAndDefault", func(t *testing.T) {
+		project := filepath.Join(homeDir, "project")
+
+		// Override forces latest even inside the v1.1.0-pinned project.
+		out, err := runBunEnv(t, project, []string{"BVM_VERSION=" + latestVersion}, "--version")
+		requireSuccess(t, out, err, "bun --version with session override")
+		if got := strings.TrimSpace(out); got != strings.TrimPrefix(latestVersion, "v") {
+			t.Fatalf("override bun --version = %q, want %q", got, strings.TrimPrefix(latestVersion, "v"))
+		}
+
+		// Without the override, the pin applies again.
+		if got := bunVersionAt(t, project); got != strings.TrimPrefix(pinnedVersion, "v") {
+			t.Fatalf("pin lost after override removed: %q", got)
+		}
+
+		// One-off exec runs a specific version without touching any state.
+		out, err = run(t, "exec", pinnedVersion, "--version")
+		requireSuccess(t, out, err, "bvm exec "+pinnedVersion)
+		if got := strings.TrimSpace(out); got != strings.TrimPrefix(pinnedVersion, "v") {
+			t.Fatalf("exec bun --version = %q, want %q", got, strings.TrimPrefix(pinnedVersion, "v"))
+		}
+		out, err = run(t, "exec", "9.9.9", "--version")
+		requireFailure(t, out, err, "bvm exec with uninstalled version")
 	})
 
 	t.Run("ListShowsMarkers", func(t *testing.T) {

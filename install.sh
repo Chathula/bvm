@@ -93,3 +93,56 @@ if ! command -v bvm >/dev/null; then
 	echo "  1. open a new terminal, or"
 	echo "  2. run:  $source_cmd"
 fi
+
+# Shell integration: enables temporary, nvm-style `bvm use <version>` that
+# switches versions for the current session only (via $BVM_VERSION).
+case $shell_profile in
+.config/fish/config.fish)
+	if ! grep -q "bvm session override support" "$HOME/$shell_profile" 2>/dev/null; then
+		cat >>"$HOME/$shell_profile" <<'EOF'
+
+# bvm session override support (temporary `bvm use <version>`)
+function bvm
+	if test "$argv[1]" = use -a "$argv[2]" = --reset
+		set -e BVM_VERSION
+		command bvm use
+		return
+	end
+	if test "$argv[1]" = use; and test -n "$argv[2]"; and not string match -q -e "--save" "$argv[2]"; and test "$argv[2]" != -s; and test "$argv[2]" != default
+		set -gx BVM_VERSION "$argv[2]"
+		command bvm use
+		return
+	end
+	if test "$argv[1]" = use -a "$argv[2]" = default
+		set -e BVM_VERSION
+	end
+	command bvm $argv
+end
+EOF
+	fi
+;;
+*)
+	if ! grep -q "bvm session override support" "$HOME/$shell_profile" 2>/dev/null; then
+		cat >>"$HOME/$shell_profile" <<'EOF'
+
+# bvm session override support (temporary `bvm use <version>`)
+bvm() {
+	if [ "$1" = "use" ] && [ "$2" = "--reset" ]; then
+		unset BVM_VERSION
+		command bvm use
+		return
+	fi
+	if [ "$1" = "use" ] && [ -n "$2" ] && [ "$2" != "--save" ] && [ "$2" != "-s" ] && [ "$2" != "default" ]; then
+		export BVM_VERSION="$2"
+		command bvm use
+		return
+	fi
+	if [ "$1" = "use" ] && [ "$2" = "default" ]; then
+		unset BVM_VERSION
+	fi
+	command bvm "$@"
+}
+EOF
+	fi
+;;
+esac

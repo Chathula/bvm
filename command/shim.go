@@ -8,8 +8,8 @@ import (
 	"github.com/chathula/bvm/util"
 )
 
-// execBunFn is a var so tests can stub process replacement.
-var execBunFn = execBun
+// execProcessFn is a var so tests can stub process replacement.
+var execProcessFn = execProcess
 
 // versionDir is a var so tests can inject lookup failures portably.
 var versionDir = util.VersionDir
@@ -43,5 +43,5 @@ func runShim() error {
 	if _, err := os.Stat(bin); err != nil {
 		return fmt.Errorf("bun %s is not installed — run 'bvm install %s'", version, version)
 	}
-	return execBunFn(bin)
+	return execProcessFn(bin, os.Args[1:])
 }

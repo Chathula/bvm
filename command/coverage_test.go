@@ -304,7 +304,7 @@ func TestUsePinsCurrentDirectory(t *testing.T) {
 	t.Chdir(project)
 
 	// Plain use never creates the pin file — .bvmrc is strictly opt-in.
-	if err := Use(false, "1.3.1"); err != nil {
+	if err := Use(false, false, "1.3.1"); err != nil {
 		t.Fatalf("Use(1.3.1) error = %v", err)
 	}
 	if path, _ := util.FindRCHere(); path != "" {
@@ -312,7 +312,7 @@ func TestUsePinsCurrentDirectory(t *testing.T) {
 	}
 
 	// Pin the project to v1.3.1 with --save.
-	if err := Use(true, "1.3.1"); err != nil {
+	if err := Use(false, true, "1.3.1"); err != nil {
 		t.Fatalf("Use(--save, 1.3.1) error = %v", err)
 	}
 	if _, v := util.FindRCHere(); v != "v1.3.1" {
@@ -320,13 +320,13 @@ func TestUsePinsCurrentDirectory(t *testing.T) {
 	}
 
 	// No-arg reports the pin.
-	out := captureStdout(t, func() { _ = Use(false, "") })
+	out := captureStdout(t, func() { _ = Use(false, false, "") })
 	if !strings.Contains(out, "v1.3.1") {
 		t.Fatalf("resolution output missing version:\n%s", out)
 	}
 
 	// 'default' clears the pin.
-	if err := Use(false, "default"); err != nil {
+	if err := Use(false, false, "default"); err != nil {
 		t.Fatalf("Use(default) error = %v", err)
 	}
 	if path, _ := util.FindRCHere(); path != "" {
@@ -334,8 +334,56 @@ func TestUsePinsCurrentDirectory(t *testing.T) {
 	}
 
 	// Uninstalled version errors.
-	if err := Use(false, "v9.9.9"); err == nil {
+	if err := Use(false, false, "v9.9.9"); err == nil {
 		t.Fatal("expected error for uninstalled version")
+	}
+}
+
+func TestExecRunsSpecificVersion(t *testing.T) {
+	setupCommandEnv(t)
+	fakeInstall(t, "v1.1.0")
+	fakeInstall(t, "v1.4.0")
+
+	var gotBin string
+	var gotArgs []string
+	stub(t, &execProcessFn, func(bin string, args []string) error {
+		gotBin = bin
+		gotArgs = args
+		return nil
+	})
+
+	// Leading "bun" is tolerated and stripped.
+	if err := Exec("1.1.0", []string{"bun", "test"}); err != nil {
+		t.Fatalf("Exec() error = %v", err)
+	}
+	want := filepath.Join(mustBVMDir(t), "versions", "v1.1.0", util.BinaryName())
+	if gotBin != want {
+		t.Fatalf("exec target = %q, want %q", gotBin, want)
+	}
+	if len(gotArgs) != 1 || gotArgs[0] != "test" {
+		t.Fatalf("exec args = %v, want [test]", gotArgs)
+	}
+
+	if err := Exec("1.4.0", nil); err != nil {
+		t.Fatalf("Exec() error = %v", err)
+	}
+	if gotBin != filepath.Join(mustBVMDir(t), "versions", "v1.4.0", util.BinaryName()) {
+		t.Fatalf("exec target = %q", gotBin)
+	}
+
+	if err := Exec("v9.9.9", nil); err == nil {
+		t.Fatal("expected error for uninstalled version")
+	}
+	if err := Exec("bogus!!", nil); err == nil {
+		t.Fatal("expected normalize error")
+	}
+}
+
+func TestUseResetGuidance(t *testing.T) {
+	setupCommandEnv(t)
+	out := captureStdout(t, func() { _ = Use(true, false, "--reset") })
+	if !strings.Contains(out, "BVM_VERSION") {
+		t.Fatalf("expected unset guidance, got:\n%s", out)
 	}
 }
 
@@ -346,13 +394,13 @@ func TestUseBranches(t *testing.T) {
 
 	t.Run("invalid version", func(t *testing.T) {
 		t.Chdir(t.TempDir())
-		if err := Use(false, "bogus!!"); err == nil {
+		if err := Use(false, false, "bogus!!"); err == nil {
 			t.Fatal("expected normalize error")
 		}
 	})
 	t.Run("use default without pin", func(t *testing.T) {
 		t.Chdir(t.TempDir())
-		out := captureStdout(t, func() { _ = Use(false, "default") })
+		out := captureStdout(t, func() { _ = Use(false, false, "default") })
 		if !strings.Contains(out, "already follows the default") {
 			t.Fatalf("unexpected output:\n%s", out)
 		}
@@ -361,28 +409,28 @@ func TestUseBranches(t *testing.T) {
 		t.Chdir(t.TempDir())
 		os.MkdirAll(filepath.Join(t.TempDir(), "placeholder"), 0o755)
 		os.MkdirAll(filepath.Join(".", rcFileNameAsDir()), 0o755) // .bvmrc as directory
-		if err := Use(true, "v1.0.0"); err == nil {
+		if err := Use(false, true, "v1.0.0"); err == nil {
 			t.Fatal("expected WriteRC failure")
 		}
 	})
 	t.Run("remove rc failure", func(t *testing.T) {
 		t.Chdir(t.TempDir())
 		os.MkdirAll(filepath.Join(".", rcFileNameAsDir(), "keep"), 0o755) // non-empty dir
-		if err := Use(false, "default"); err == nil {
+		if err := Use(false, false, "default"); err == nil {
 			t.Fatal("expected RemoveRC failure")
 		}
 	})
 	t.Run("shim warning", func(t *testing.T) {
 		t.Chdir(t.TempDir())
 		stub(t, &ensureShim, func() error { return fmt.Errorf("no rights") })
-		out := captureStdout(t, func() { _ = Use(true, "v1.0.0") })
+		out := captureStdout(t, func() { _ = Use(false, true, "v1.0.0") })
 		if !strings.Contains(out, "shim") {
 			t.Fatalf("expected shim warning, got:\n%s", out)
 		}
 	})
 	t.Run("resolution failure", func(t *testing.T) {
 		t.Chdir(t.TempDir())
-		if err := Use(false, ""); err == nil {
+		if err := Use(false, false, ""); err == nil {
 			t.Fatal("expected resolution failure with nothing installed")
 		}
 	})
@@ -475,6 +523,9 @@ func TestDoctorReportsChecks(t *testing.T) {
 	}
 
 	// Healthy env: installed, defaulted, shim on PATH, API reachable.
+	// Chdir away from the repo so walk-up resolution can't trip over a
+	// developer's own .bvmrc.
+	t.Chdir(t.TempDir())
 	binDir, _ := util.BunBinDir()
 	os.MkdirAll(binDir, 0o755)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
