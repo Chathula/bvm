@@ -23,7 +23,8 @@ Remove-Item $tmpZip
 Write-Host "bvm was installed successfully to $exe"
 
 $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
-if ($userPath -notlike "*$binDir*") {
+$pathEntries = if ($userPath) { $userPath -split ";" } else { @() }
+if ($pathEntries -notcontains $binDir) {
 	[Environment]::SetEnvironmentVariable("PATH", "$userPath;$binDir", "User")
 	Write-Host "Added $binDir to your user PATH — reopen your terminal to get started."
 } else {
