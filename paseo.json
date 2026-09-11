@@ -1,0 +1,10 @@
+{
+  "metadataGeneration": {
+    "branchName": {
+      "instructions": "Prefix branches with feat/ or fix/, mb/ etc for personal branches"
+    },
+    "commitMessage": {
+      "instructions": "Prefix commit with feat/ or fix/, mb/ etc"
+    }
+  }
+}
