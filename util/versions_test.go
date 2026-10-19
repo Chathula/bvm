@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -64,6 +65,22 @@ func TestRemoteVersionsPaginationAndOrder(t *testing.T) {
 	}
 	if versions[0] != "v0.1.0" || versions[len(versions)-1] != "v0.250.0" {
 		t.Fatalf("unexpected order: first=%s last=%s", versions[0], versions[len(versions)-1])
+	}
+}
+
+func TestRemoteVersionsChecksStatusBeforeReadingBody(t *testing.T) {
+	// Advertise a huge body but send none: if RemoteVersions reads before
+	// checking the status, it surfaces a body read error instead.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "104857600")
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	setReleasesAPIURL(t, srv.URL)
+
+	_, err := RemoteVersions()
+	if err == nil || !strings.Contains(err.Error(), "status 500") {
+		t.Fatalf("RemoteVersions() error = %v, want status 500", err)
 	}
 }
 
