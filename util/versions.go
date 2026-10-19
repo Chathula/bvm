@@ -72,13 +72,14 @@ func RemoteVersions() ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("request failed on %s: %w", url, err)
 		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
+		}
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			return nil, fmt.Errorf("failed reading response body: %w", err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
 		}
 
 		var tags []gitTag
