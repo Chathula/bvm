@@ -17,24 +17,26 @@ func TestEnsureShimLinksOrCopiesBvmBinary(t *testing.T) {
 		t.Fatalf("EnsureShim() error = %v", err)
 	}
 
-	shim := mustBunPath(t)
-	data, err := os.ReadFile(shim)
-	if err != nil {
-		t.Fatalf("shim missing: %v", err)
-	}
-	if len(data) == 0 {
-		t.Fatal("shim is empty")
-	}
-
-	if runtime.GOOS != "windows" {
-		exe, _ := os.Executable()
-		resolved, _ := filepath.EvalSymlinks(exe)
-		target, err := os.Readlink(shim)
+	for _, path := range []func(*testing.T) string{mustBunPath, mustBunxPath} {
+		shim := path(t)
+		data, err := os.ReadFile(shim)
 		if err != nil {
-			t.Fatalf("expected symlink shim, got error: %v", err)
+			t.Fatalf("shim %s missing: %v", shim, err)
 		}
-		if filepath.Clean(target) != filepath.Clean(resolved) {
-			t.Fatalf("shim target = %q, want %q", target, resolved)
+		if len(data) == 0 {
+			t.Fatalf("shim %s is empty", shim)
+		}
+
+		if runtime.GOOS != "windows" {
+			exe, _ := os.Executable()
+			resolved, _ := filepath.EvalSymlinks(exe)
+			target, err := os.Readlink(shim)
+			if err != nil {
+				t.Fatalf("expected symlink shim, got error: %v", err)
+			}
+			if filepath.Clean(target) != filepath.Clean(resolved) {
+				t.Fatalf("shim target = %q, want %q", target, resolved)
+			}
 		}
 	}
 }
@@ -112,14 +114,18 @@ func TestRemoveShim(t *testing.T) {
 		t.Fatalf("RemoveShim() on missing shim error = %v", err)
 	}
 
-	shim := mustBunPath(t)
-	os.MkdirAll(filepath.Dir(shim), 0o755)
-	os.WriteFile(shim, []byte("shim"), 0o755)
+	shims := []string{mustBunPath(t), mustBunxPath(t)}
+	for _, shim := range shims {
+		os.MkdirAll(filepath.Dir(shim), 0o755)
+		os.WriteFile(shim, []byte("shim"), 0o755)
+	}
 	if err := RemoveShim(); err != nil {
 		t.Fatalf("RemoveShim() error = %v", err)
 	}
-	if _, err := os.Stat(shim); !os.IsNotExist(err) {
-		t.Fatal("shim still present after RemoveShim")
+	for _, shim := range shims {
+		if _, err := os.Stat(shim); !os.IsNotExist(err) {
+			t.Fatalf("%s still present after RemoveShim", shim)
+		}
 	}
 
 	// NotExist from removal is tolerated (returns nil).
@@ -130,7 +136,7 @@ func TestRemoveShim(t *testing.T) {
 
 	// Other removal failures propagate.
 	stub(t, &RemoveAll, func(string) error { return fmt.Errorf("injected") })
-	os.WriteFile(shim, []byte("shim"), 0o755)
+	os.WriteFile(shims[0], []byte("shim"), 0o755)
 	if err := RemoveShim(); err == nil {
 		t.Fatal("expected RemoveAll error to propagate")
 	}
@@ -162,6 +168,15 @@ func TestClearDefault(t *testing.T) {
 func mustBunPath(t *testing.T) string {
 	t.Helper()
 	p, err := BunBinPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func mustBunxPath(t *testing.T) string {
+	t.Helper()
+	p, err := BunxBinPath()
 	if err != nil {
 		t.Fatal(err)
 	}

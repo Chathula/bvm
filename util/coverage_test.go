@@ -31,6 +31,7 @@ func TestPathHelpersFailWithoutHome(t *testing.T) {
 		"VersionsDir":    VersionsDir,
 		"VersionDir":     func() (string, error) { return VersionDir("v1.0.0") },
 		"BunBinPath":     BunBinPath,
+		"BunxBinPath":    BunxBinPath,
 		"BunBinDir":      BunBinDir,
 		"DefaultVersion": DefaultVersion,
 		"LocalVersions":  func() (string, error) { _, err := LocalVersions(); return "", err },

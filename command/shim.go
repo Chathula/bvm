@@ -20,16 +20,18 @@ var exitWithError = func(msg string) {
 	os.Exit(1)
 }
 
-// RunShim implements the `bun` shim: invoked as bun, bvm resolves which
+// RunShim implements the `bun` and `bunx` shims: bvm resolves which
 // installed version applies to the current directory (nearest .bvmrc walking
 // up, else the default alias) and hands the arguments over to that binary.
-func RunShim() {
-	if err := runShim(); err != nil {
+// When invoked as bunx, the equivalent `bun x` form is used so the selected
+// version runs the package runner too.
+func RunShim(alias string) {
+	if err := runShim(alias); err != nil {
 		exitWithError(err.Error())
 	}
 }
 
-func runShim() error {
+func runShim(alias string) error {
 	version, _, err := util.ResolveVersion()
 	if err != nil {
 		return err
@@ -43,5 +45,10 @@ func runShim() error {
 	if _, err := os.Stat(bin); err != nil {
 		return fmt.Errorf("bun %s is not installed — run 'bvm install %s'", version, version)
 	}
-	return execProcessFn(bin, os.Args[1:])
+
+	args := os.Args[1:]
+	if alias == "bunx" {
+		args = append([]string{"x"}, args...)
+	}
+	return execProcessFn(bin, args)
 }

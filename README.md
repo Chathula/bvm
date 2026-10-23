@@ -11,6 +11,9 @@
 - Install any published Bun version (`bvm install 1.1.0`, `bvm install latest`)
 - nvm-style **default version**: new shells and unpinned directories use it
 - **Per-project versions** via an optional `.bvmrc` (`bvm use --save 1.4.0`)
+- **`bunx` is shimmed too**, so the package runner always uses the same
+  version `bun` would (`bunx` is equivalent to `bun x`, see the
+  [Bun docs](https://bun.com/docs/pm/bunx))
 - Works natively on **Linux, macOS (Intel & Apple Silicon) and Windows**
 - Zero runtime dependencies — a single static binary
 
@@ -117,8 +120,9 @@ bvm doctor              # verify shim, PATH, resolution, API reachability
 ## How version resolution works
 
 bvm works like nvm's default alias, implemented through a **shim**: the
-`bun` command on your PATH is bvm itself, and it resolves which real Bun
-binary to run on every invocation.
+`bun` and `bunx` commands on your PATH are bvm itself, and they resolve
+which real Bun binary to run on every invocation. `bunx` hands off to
+`bun x`, so both commands always follow the same rules.
 
 1. `$BVM_VERSION` if set — a **temporary, session-only** override
    (see below)
@@ -198,8 +202,8 @@ Manual removal, nvm-style:
 bvm_dir="${BVM_DIR:-~/.bvm}"
 rm -rf "$bvm_dir"
 
-# 2. remove the shim bvm placed on your PATH
-rm -f ~/.bun/bin/bun        # unix (skip if you installed Bun independently)
+# 2. remove the shims bvm placed on your PATH
+rm -f ~/.bun/bin/bun ~/.bun/bin/bunx   # unix (skip if Bun installed them independently)
 ```
 
 Then edit your shell profile (`~/.zshrc`, `~/.bashrc` or fish's
@@ -215,7 +219,7 @@ On Windows (PowerShell):
 
 ```powershell
 Remove-Item -Recurse -Force "$env:USERPROFILE\.bvm"
-Remove-Item -Force "$env:USERPROFILE\.bun\bin\bun.exe"
+Remove-Item -Force "$env:USERPROFILE\.bun\bin\bun.exe", "$env:USERPROFILE\.bun\bin\bunx.exe"
 # then remove "%USERPROFILE%\.bvm\bin" from your PATH (Settings > Environment Variables)
 ```
 

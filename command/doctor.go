@@ -83,6 +83,15 @@ func doctorChecks() []func() check {
 			return check{name: "bun shim (~/.bun/bin)", ok: statErr == nil, detail: detail}
 		},
 		func() check {
+			binPath, err := util.BunxBinPath()
+			if err != nil {
+				return check{name: "bunx shim", ok: false, detail: err.Error()}
+			}
+			_, statErr := os.Stat(binPath)
+			detail := binPath + linkDetail(runtime.GOOS, binPath, statErr == nil)
+			return check{name: "bunx shim (~/.bun/bin)", ok: statErr == nil, detail: detail}
+		},
+		func() check {
 			binPath, _ := util.BunBinPath()
 			binDir := filepath.Dir(binPath)
 			onPath := util.PathContains(binDir)

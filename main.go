@@ -16,18 +16,23 @@ import (
 // version is injected at release time via -ldflags "-X main.version=x.y.z".
 var version = "dev"
 
-// isShimInvocation reports whether this binary was invoked as the bun shim
-// (i.e. linked/copied to ~/.bun/bin/bun).
-func isShimInvocation() bool {
-	base := strings.ToLower(filepath.Base(os.Args[0]))
-	return base == "bun" || base == "bun.exe"
+// shimAlias reports which shim invoked this binary ("bun" or "bunx"), or
+// "" when it was invoked as plain bvm.
+func shimAlias() string {
+	switch strings.ToLower(filepath.Base(os.Args[0])) {
+	case "bun", "bun.exe":
+		return "bun"
+	case "bunx", "bunx.exe":
+		return "bunx"
+	}
+	return ""
 }
 
 func main() {
-	// Invoked as "bun" (the shim): resolve the version for this directory
-	// and hand off to it instead of running the CLI.
-	if isShimInvocation() {
-		command.RunShim()
+	// Invoked as "bun" or "bunx" (the shims): resolve the version for this
+	// directory and hand off to it instead of running the CLI.
+	if alias := shimAlias(); alias != "" {
+		command.RunShim(alias)
 		return
 	}
 
