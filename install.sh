@@ -61,6 +61,15 @@ if [ "$(uname)" = "Darwin" ] && command -v codesign >/dev/null; then
 	codesign --force --sign - "$exe" 2>/dev/null || true
 fi
 
+# Updating bvm only replaces the binary, so refresh the bun/bunx shims here.
+# Without this an existing install keeps its old shims (and may have no bunx).
+if [ -d "$bvm_dir/versions" ] && [ -n "$(ls -A "$bvm_dir/versions" 2>/dev/null)" ]; then
+	bun_bin_dir="$HOME/.bun/bin"
+	mkdir -p "$bun_bin_dir"
+	ln -sf "$exe" "$bun_bin_dir/bun"
+	ln -sf "$exe" "$bun_bin_dir/bunx"
+fi
+
 case $SHELL in
 */zsh) shell_profile=".zshrc"; source_cmd="source ~/.zshrc" ;;
 */fish) shell_profile=".config/fish/config.fish"; source_cmd="source ~/.config/fish/config.fish" ;;

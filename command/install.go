@@ -38,6 +38,11 @@ func Install(arg string) error {
 	}
 
 	if util.IsInstalled(version) {
+		// Still refresh the shims: they may be missing or stale after a bvm
+		// upgrade, and "already installed" is how existing setups repair.
+		if err := ensureShim(); err != nil {
+			fmt.Println(color.YellowString("Warning: could not install the bun shim: %v", err))
+		}
 		fmt.Println(color.YellowString("bun %s is already installed. Run 'bvm use %s' to activate it.", version, version))
 		return nil
 	}

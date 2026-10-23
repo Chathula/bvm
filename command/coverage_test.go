@@ -133,6 +133,17 @@ func TestInstallFailureBranches(t *testing.T) {
 		if err := Install("1.0.0"); err != nil {
 			t.Fatalf("already-installed path errored: %v", err)
 		}
+		// An existing install must still get the current shims (e.g. bunx
+		// added in a newer bvm) without downloading anything.
+		for _, binPath := range []func() (string, error){util.BunBinPath, util.BunxBinPath} {
+			shim, err := binPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(shim); err != nil {
+				t.Fatalf("shim %s missing after already-installed install: %v", shim, err)
+			}
+		}
 	})
 	t.Run("download failure cleans up", func(t *testing.T) {
 		setupCommandEnv(t)
