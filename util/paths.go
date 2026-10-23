@@ -35,6 +35,19 @@ func BinaryNameForOS(goos string) string {
 	return "bun"
 }
 
+// BunxName returns the bunx executable name on the host OS.
+func BunxName() string {
+	return BunxNameForOS(runtime.GOOS)
+}
+
+// BunxNameForOS returns the bunx executable name for a given GOOS.
+func BunxNameForOS(goos string) string {
+	if goos == "windows" {
+		return "bunx.exe"
+	}
+	return "bunx"
+}
+
 // BVMDir returns the bvm root directory ($BVM_DIR, default ~/.bvm).
 func BVMDir() (string, error) {
 	if dir := os.Getenv("BVM_DIR"); dir != "" {
@@ -72,6 +85,15 @@ func BunBinPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".bun", "bin", BinaryName()), nil
+}
+
+// BunxBinPath returns where the bunx shim lives (~/.bun/bin/bunx).
+func BunxBinPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".bun", "bin", BunxName()), nil
 }
 
 // IsInstalled reports whether a version has its binary in place locally.

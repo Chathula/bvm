@@ -9,14 +9,14 @@ import (
 
 func TestPlatformAssetMatrix(t *testing.T) {
 	cases := []struct {
-		goos, goarch, asset, binary string
+		goos, goarch, asset, binary, bunx string
 	}{
-		{"darwin", "amd64", "bun-darwin-x64.zip", "bun"},
-		{"darwin", "arm64", "bun-darwin-aarch64.zip", "bun"},
-		{"linux", "amd64", "bun-linux-x64.zip", "bun"},
-		{"linux", "arm64", "bun-linux-aarch64.zip", "bun"},
-		{"windows", "amd64", "bun-windows-x64.zip", "bun.exe"},
-		{"windows", "arm64", "bun-windows-aarch64.zip", "bun.exe"},
+		{"darwin", "amd64", "bun-darwin-x64.zip", "bun", "bunx"},
+		{"darwin", "arm64", "bun-darwin-aarch64.zip", "bun", "bunx"},
+		{"linux", "amd64", "bun-linux-x64.zip", "bun", "bunx"},
+		{"linux", "arm64", "bun-linux-aarch64.zip", "bun", "bunx"},
+		{"windows", "amd64", "bun-windows-x64.zip", "bun.exe", "bunx.exe"},
+		{"windows", "arm64", "bun-windows-aarch64.zip", "bun.exe", "bunx.exe"},
 	}
 
 	for _, c := range cases {
@@ -29,6 +29,9 @@ func TestPlatformAssetMatrix(t *testing.T) {
 		}
 		if got := BinaryNameForOS(c.goos); got != c.binary {
 			t.Errorf("BinaryNameForOS(%q) = %q, want %q", c.goos, got, c.binary)
+		}
+		if got := BunxNameForOS(c.goos); got != c.bunx {
+			t.Errorf("BunxNameForOS(%q) = %q, want %q", c.goos, got, c.bunx)
 		}
 		wantURL := fmt.Sprintf("%s/releases/download/bun-v1.1.0/%s", config.BunGitHubRepoURL, c.asset)
 		if got := p.DownloadURL("v1.1.0"); got != wantURL {

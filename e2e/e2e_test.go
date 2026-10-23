@@ -88,6 +88,19 @@ func runBunEnv(t *testing.T, dir string, extraEnv []string, args ...string) (str
 	return runWithTimeout(cmd, time.Minute)
 }
 
+// runBunx invokes the installed bunx shim the way a user's shell would.
+func runBunx(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	name := "bunx"
+	if runtime.GOOS == "windows" {
+		name = "bunx.exe"
+	}
+	cmd := exec.Command(filepath.Join(homeDir, ".bun", "bin", name), args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "BVM_DIR="+bvmRoot, "HOME="+homeDir, "USERPROFILE="+homeDir)
+	return runWithTimeout(cmd, time.Minute)
+}
+
 func runWithTimeout(cmd *exec.Cmd, timeout time.Duration) (string, error) {
 	var buf strings.Builder
 	cmd.Stdout = &buf
@@ -167,6 +180,16 @@ func TestE2EFlow(t *testing.T) {
 		// New shells / unpinned directories get the default.
 		if got := bunVersionAt(t, freshDir); got != strings.TrimPrefix(pinnedVersion, "v") {
 			t.Fatalf("fresh dir bun --version = %q, want default %q", got, strings.TrimPrefix(pinnedVersion, "v"))
+		}
+	})
+
+	t.Run("BunxShimRunsInstalledVersion", func(t *testing.T) {
+		// bunx must route through bvm just like bun. `--help` needs no
+		// network and prints the runner's own usage; some versions exit
+		// non-zero for it, so only the output matters.
+		out, _ := runBunx(t, freshDir, "--help")
+		if !strings.Contains(out, "bunx") {
+			t.Fatalf("bunx shim did not run:\n%s", out)
 		}
 	})
 
@@ -281,12 +304,14 @@ func TestE2EFlow(t *testing.T) {
 		out, err := run(t, "uninstall", pinnedVersion)
 		requireSuccess(t, out, err, "uninstall last "+pinnedVersion)
 
-		shim := "bun"
+		shims := []string{"bun", "bunx"}
 		if runtime.GOOS == "windows" {
-			shim = "bun.exe"
+			shims = []string{"bun.exe", "bunx.exe"}
 		}
-		if _, err := os.Stat(filepath.Join(homeDir, ".bun", "bin", shim)); !os.IsNotExist(err) {
-			t.Fatal("shim still present after removing the last version")
+		for _, shim := range shims {
+			if _, err := os.Stat(filepath.Join(homeDir, ".bun", "bin", shim)); !os.IsNotExist(err) {
+				t.Fatalf("%s shim still present after removing the last version", shim)
+			}
 		}
 		_, err = runBun(t, freshDir, "--version")
 		requireFailure(t, "", err, "bun --version with nothing installed")

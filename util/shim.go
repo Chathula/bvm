@@ -21,9 +21,15 @@ var placeBinary = func(src, dst string, useSymlink bool) error {
 	return os.Symlink(src, dst)
 }
 
-// EnsureShim exposes bvm itself as ~/.bun/bin/bun — a symlink on unix, a
-// copy on Windows. Invoked as "bun", bvm resolves the right version per
-// directory (see ResolveVersion) and hands off to it.
+// shimPaths returns each executable bvm exposes, in creation order.
+func shimPaths() []func() (string, error) {
+	return []func() (string, error){BunBinPath, BunxBinPath}
+}
+
+// EnsureShim exposes bvm itself as ~/.bun/bin/bun and ~/.bun/bin/bunx —
+// symlinks on unix, copies on Windows. Invoked as "bun" or "bunx", bvm
+// resolves the right version per directory (see ResolveVersion) and hands
+// off to it, so bunx follows the same version rules as bun.
 func EnsureShim() error {
 	exe, err := osExecutable()
 	if err != nil {
@@ -33,31 +39,39 @@ func EnsureShim() error {
 		exe = resolved
 	}
 
-	dst, err := BunBinPath()
-	if err != nil {
-		return err
+	for _, path := range shimPaths() {
+		dst, err := path()
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		// A stale shim pointing at a removed binary must not block us.
+		if err := RemoveAll(dst); err != nil {
+			return err
+		}
+		if err := placeBinary(exe, dst, runtime.GOOS != "windows"); err != nil {
+			return err
+		}
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	// A stale shim pointing at a removed binary must not block us.
-	if err := RemoveAll(dst); err != nil {
-		return err
-	}
-	return placeBinary(exe, dst, runtime.GOOS != "windows")
+	return nil
 }
 
-// RemoveShim deletes the exposed bun shim (used when nothing is installed).
+// RemoveShim deletes the exposed bun and bunx shims (used when nothing is
+// installed).
 func RemoveShim() error {
-	dst, err := BunBinPath()
-	if err != nil {
-		return err
+	for _, path := range shimPaths() {
+		dst, err := path()
+		if err != nil {
+			return err
+		}
+		err = RemoveAll(dst)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
-	err = RemoveAll(dst)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	return err
+	return nil
 }
 
 // ClearDefault removes the default alias file.
